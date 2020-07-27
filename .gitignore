@@ -12,10 +12,6 @@
 
 #no programming files
 *.root
-*.pdf
-*.png
-
 *.sav
-*.png
 
 build/

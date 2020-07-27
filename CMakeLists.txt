@@ -12,8 +12,6 @@ if(ROOT_FOUND)
     message(STATUS "Using ROOT: ${ROOT_VERSION} <${ROOT_CONFIG}>")
 endif(ROOT_FOUND)
 
-# INCLUDE_DIRECTORIES ( "/Users/matthias/Desktop/testCube/eigen-3.3.7/Eigen/" )
-
 set(CMAKE_CXX_FLAGS_DEBUG "-I${VC_ROOT}/include")
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native")
@@ -25,4 +23,4 @@ find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
 
 
-target_link_libraries(executable PRIVATE OpenMP::OpenMP_CXX Vc::Vc ${ROOT_LIBRARIES} Vc::Vc "${TORCH_LIBRARIES}")
+target_link_libraries(executable PRIVATE OpenMP::OpenMP_CXX Vc::Vc ${ROOT_LIBRARIES} Vc::Vc)

@@ -4,6 +4,10 @@
 #include "TriCubic.h"
 #include "AliRoot/AliTPCPoissonSolver.h"
 
+#ifdef WITH_OPENMP
+#include <omp.h>
+#endif
+
 /// \tparam DataT the type of data which is used during the calculations
 /// \tparam Nr number of vertices in r direction
 /// \tparam Nz number of vertices in z direction

@@ -1,17 +1,17 @@
-// #include "TriCubic_eigen.h"
-#include "include/TriCubic.h"
-// #include "TriCubicFast.h"
-// #include <iostream>
-// #include <Eigen/Core>
-#include <chrono>
-#include <random>
-#include <Vc/Vc>
-#include "include/matrix.h"
-#include <omp.h>
+#include "include/O2TPCSpaceCharge3DCalc.h"
+#include <iostream>
 
-
-
-int main(int argc, char const *argv[]) {
+int main() {
   /* code */
+  const unsigned int nGridR = 129;
+  const unsigned int nGridZ = 129;
+  const unsigned int nGridPhi = 180;
+  O2TPCSpaceCharge3DCalc<float, nGridR, nGridZ, nGridPhi> spaceCharge3DCalc;
+
+
+  std::cout<<"getGridSizeR(): " << spaceCharge3DCalc.getGridSpacingR()  << std::endl;
+
+
+
   return 0;
 }

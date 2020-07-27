@@ -14,7 +14,7 @@ struct RegularGrid3D {
     initArray(gridData);
   }
 
-  RegularGrid3D(const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}} {}
+  RegularGrid3D(const DataT xmin=0, const DataT ymin=0, const DataT zmin=0, const DataT spacingX=1, const DataT spacingY=1, const DataT spacingZ=1) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}} {}
 
   void initArray(const DataT* gridData)
   {

@@ -1,0 +1,21 @@
+#Mac OS junk files
+[Tt]humbs.db
+*.DS_Store
+*._*
+
+#cpp junk
+*.pcm
+*.d
+*.so
+
+*.cxx_tmp*
+
+#no programming files
+*.root
+*.pdf
+*.png
+
+*.sav
+*.png
+
+build/

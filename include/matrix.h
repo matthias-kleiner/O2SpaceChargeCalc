@@ -7,25 +7,25 @@
 template <typename DataT = float, size_t N = 64>
 class Matrix
 {
-  using V = Vc::Vector<DataT>;
+  using VDataT = Vc::Vector<DataT>;
 
  public:
-  Matrix(const Vc::Memory<V, N>* dataMatrix) : mDataMatrix(dataMatrix) {}
+  Matrix(const Vc::Memory<VDataT, N>* dataMatrix) : mDataMatrix(dataMatrix) {}
 
   // const overload of the above
-  const Vc::Memory<V, N>& operator[](size_t i) const { return mDataMatrix[i]; }
+  const Vc::Memory<VDataT, N>& operator[](size_t i) const { return mDataMatrix[i]; }
 
  private:
-  const Vc::Memory<V, N>* mDataMatrix{};
+  const Vc::Memory<VDataT, N>* mDataMatrix{};
 };
 
 template <typename DataT = float, size_t N = 64>
 class Vector
 {
-  using V = Vc::Vector<DataT>;
+  using VDataT = Vc::Vector<DataT>;
 
  public:
-  Vector(const Vc::Memory<V, N>& dataVector) : mDataVector(dataVector) {}
+  Vector(const Vc::Memory<VDataT, N>& dataVector) : mDataVector(dataVector) {}
 
   Vector(){};
 
@@ -48,14 +48,14 @@ class Vector
   const DataT operator[](size_t i) const { return mDataVector.scalar(i); }
   DataT& operator[](size_t i) { return mDataVector.scalar(i); }
 
-  void setVector(const size_t j, const V& vector)
+  void setVector(const size_t j, const VDataT& vector)
   {
     mDataVector.vector(j) = vector;
   }
 
   const Vc::Vector<DataT> GetVector(const size_t i) const { return mDataVector.vector(i); }
 
-  Vc::Memory<V, N> GetMemory() const { return mDataVector; }
+  Vc::Memory<VDataT, N> GetMemory() const { return mDataVector; }
 
   size_t GetvectorsCount() const
   {
@@ -67,14 +67,14 @@ class Vector
     return mDataVector.entriesCount();
   }
 
-  Vc::Memory<V, N>& GetDataStorage()
+  Vc::Memory<VDataT, N>& GetDataStorage()
   {
     return mDataVector;
   }
 
  private:
   // storage for the data
-  Vc::Memory<V, N> mDataVector{};
+  Vc::Memory<VDataT, N> mDataVector{};
 };
 
 template <typename T, size_t N>

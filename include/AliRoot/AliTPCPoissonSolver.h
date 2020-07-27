@@ -25,6 +25,7 @@
 #include "TVectorD.h"
 #include "Rtypes.h"
 
+template <typename DataT = float>
 class AliTPCPoissonSolver : public TNamed
 {
  public:
@@ -101,18 +102,18 @@ class AliTPCPoissonSolver : public TNamed
   void SetStrategy(StrategyType strategy) { fStrategy = strategy; }
   StrategyType GetStrategy() { return fStrategy; }
 
-  static const Double_t fgkTPCZ0;     ///< nominal gating grid position
-  static const Double_t fgkIFCRadius; ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
-  static const Double_t fgkOFCRadius; ///< Mean Radius of the Outer Field Cage (252.55 min, 256.45 max) (cm)
-  static const Double_t fgkZOffSet;   ///< Offset from CE: calculate all distortions closer to CE as if at this point
-  static const Double_t fgkCathodeV;  ///< Cathode Voltage (volts)
-  static const Double_t fgkGG;        ///< Gating Grid voltage (volts)
-  static const Double_t fgkdvdE;      ///< [cm/V] drift velocity dependency on the E field (from Magboltz for NeCO2N2 at standard environment)
-  static const Double_t fgkEM;        ///< charge/mass in [C/kg]
-  static const Double_t fgke0;        ///< vacuum permittivity [A·s/(V·m)]
+  static constexpr DataT fgkTPCZ0{249.7};     ///< nominal gating grid position
+  static constexpr DataT fgkIFCRadius {83.5}; ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
+  static constexpr DataT fgkOFCRadius {254.5}; ///< Mean Radius of the Outer Field Cage (252.55 min, 256.45 max) (cm)
+  static constexpr DataT fgkZOffSet{ 0.2};   ///< Offset from CE: calculate all distortions closer to CE as if at this point
+  static constexpr DataT fgkCathodeV{-100000.0};  ///< Cathode Voltage (volts)
+  static constexpr DataT fgkGG{-70.0};        ///< Gating Grid voltage (volts)
+  static constexpr DataT fgkdvdE{0.0024};      ///< [cm/V] drift velocity dependency on the E field (from Magboltz for NeCO2N2 at standard environment)
+  static constexpr DataT fgkEM{-1.602176487e-19 / 9.10938215e-31};        ///< charge/mass in [C/kg]
+  static constexpr DataT fgke0{8.854187817e-12};        ///< vacuum permittivity [A·s/(V·m)]
 
-  static Double_t fgExactErr;         ///< Error tolerated
-  static Double_t fgConvergenceError; ///< Error tolerated
+  static constexpr DataT fgExactErr{1e-4};         ///< Error tolerated
+  static constexpr DataT fgConvergenceError{1e-3}; ///< Error tolerated
   Int_t fIterations;                  ///< number of maximum iteration
   MGParameters fMgParameters;         ///< parameters multi grid
 
@@ -215,6 +216,10 @@ class AliTPCPoissonSolver : public TNamed
   // ClassDefNV(AliTPCPoissonSolver, 5);
 // #endif
   /// \endcond
+
+  // \cond CLASSIMP
+  ClassDefOverride(AliTPCPoissonSolver, 1);
+  // \endcond
 };
 
 #endif

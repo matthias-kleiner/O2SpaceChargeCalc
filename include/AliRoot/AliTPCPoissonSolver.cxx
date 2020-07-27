@@ -22,24 +22,13 @@
 
 /// \cond CLASSIMP
 // ClassImp(AliTPCPoissonSolver);
+templateClassImp(AliTPCPoissonSolver);
 /// \endcond
-
-const Double_t AliTPCPoissonSolver::fgkTPCZ0 = 249.7;                          ///< nominal gating grid position
-const Double_t AliTPCPoissonSolver::fgkIFCRadius = 83.5;                       ///< radius which renders the "18 rod manifold" best -> compare calc. of Jim Thomas
-const Double_t AliTPCPoissonSolver::fgkOFCRadius = 254.5;                      ///< Mean Radius of the Outer Field Cage (252.55 min, 256.45 max) (cm)
-const Double_t AliTPCPoissonSolver::fgkZOffSet = 0.2;                          ///< Offset from CE: calculate all distortions closer to CE as if at this point
-const Double_t AliTPCPoissonSolver::fgkCathodeV = -100000.0;                   ///< Cathode Voltage (volts)
-const Double_t AliTPCPoissonSolver::fgkGG = -70.0;                             ///< Gating Grid voltage (volts)
-const Double_t AliTPCPoissonSolver::fgkdvdE = 0.0024;                          ///< [cm/V] drift velocity dependency on the E field (from Magboltz for NeCO2N2 at standard environment)
-const Double_t AliTPCPoissonSolver::fgkEM = -1.602176487e-19 / 9.10938215e-31; ///< charge/mass in [C/kg]
-const Double_t AliTPCPoissonSolver::fgke0 = 8.854187817e-12;                   ///< vacuum permittivity [A·s/(V·m)]
-
-Double_t AliTPCPoissonSolver::fgExactErr = 1e-4;
-Double_t AliTPCPoissonSolver::fgConvergenceError = 1e-3;
 
 /// constructor
 ///
-AliTPCPoissonSolver::AliTPCPoissonSolver()
+template <typename DataT>
+AliTPCPoissonSolver<DataT>::AliTPCPoissonSolver()
   : TNamed("poisson solver", "solver"),
     fErrorConvergenceNorm2{new TVectorD(fMgParameters.nMGCycle)},
     fErrorConvergenceNormInf{new TVectorD(fMgParameters.nMGCycle)},
@@ -52,7 +41,8 @@ AliTPCPoissonSolver::AliTPCPoissonSolver()
 /// Constructor
 /// \param name name of the object
 /// \param title title of the object
-AliTPCPoissonSolver::AliTPCPoissonSolver(const char* name, const char* title)
+template <typename DataT>
+AliTPCPoissonSolver<DataT>::AliTPCPoissonSolver(const char* name, const char* title)
   : TNamed(name, title),
     fErrorConvergenceNorm2{new TVectorD(fMgParameters.nMGCycle)},
     fErrorConvergenceNormInf{new TVectorD(fMgParameters.nMGCycle)},
@@ -62,7 +52,8 @@ AliTPCPoissonSolver::AliTPCPoissonSolver(const char* name, const char* title)
 }
 
 /// destructor
-AliTPCPoissonSolver::~AliTPCPoissonSolver()
+template <typename DataT>
+AliTPCPoissonSolver<DataT>::~AliTPCPoissonSolver()
 {
   /// virtual destructor
   delete[] fExactSolution;
@@ -82,7 +73,8 @@ AliTPCPoissonSolver::~AliTPCPoissonSolver()
 /// \param maxIteration Int_t maximum iteration for relaxation method
 ///
 /// \return A fixed number that has nothing to do with what the function does
-void AliTPCPoissonSolver::PoissonSolver2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonSolver2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn,
                                           Int_t maxIteration)
 {
   switch (fStrategy) {
@@ -114,7 +106,8 @@ void AliTPCPoissonSolver::PoissonSolver2D(TMatrixD& matrixV, TMatrixD& matrixCha
 ///
 /// \pre Charge density distribution in **matricesCharge** is known and boundary values for **matricesV** are set
 /// \post Numerical solution for potential distribution is calculated and stored in each rod at **matricesV**
-void AliTPCPoissonSolver::PoissonSolver3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonSolver3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
                                           Int_t nRRow, Int_t nZColumn, Int_t phiSlice, Int_t maxIteration,
                                           Int_t symmetry)
 {
@@ -161,11 +154,12 @@ void AliTPCPoissonSolver::PoissonSolver3D(TMatrixD** matricesV, TMatrixD** matri
 ///
 ///
 /// Original code by Jim Thomas (STAR TPC Collaboration)
-void AliTPCPoissonSolver::PoissonRelaxation2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonRelaxation2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn,
                                               Int_t maxIteration)
 {
-  const Float_t gridSizeR = (AliTPCPoissonSolver::fgkOFCRadius - AliTPCPoissonSolver::fgkIFCRadius) / (nRRow - 1);
-  const Float_t gridSizeZ = AliTPCPoissonSolver::fgkTPCZ0 / (nZColumn - 1);
+  const Float_t gridSizeR = (AliTPCPoissonSolver<DataT>::fgkOFCRadius - AliTPCPoissonSolver<DataT>::fgkIFCRadius) / (nRRow - 1);
+  const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (nZColumn - 1);
   const Float_t ratio = gridSizeR * gridSizeR / (gridSizeZ * gridSizeZ);
 
   TMatrixD arrayEr(nRRow, nZColumn);
@@ -205,7 +199,7 @@ void AliTPCPoissonSolver::PoissonRelaxation2D(TMatrixD& matrixV, TMatrixD& matri
     std::vector<float> coefficient2(nRRow);
 
     for (Int_t i = iOne; i < nRRow - 1; i += iOne) {
-      Float_t radius = AliTPCPoissonSolver::fgkIFCRadius + i * gridSizeR;
+      Float_t radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * gridSizeR;
       coefficient1[i] = 1.0 + tempGridSizeR / (2 * radius);
       coefficient2[i] = 1.0 - tempGridSizeR / (2 * radius);
     }
@@ -214,7 +208,7 @@ void AliTPCPoissonSolver::PoissonRelaxation2D(TMatrixD& matrixV, TMatrixD& matri
 
     // average charge at the coarse point
     for (Int_t i = iOne; i < nRRow - 1; i += iOne) {
-      Float_t radius = AliTPCPoissonSolver::fgkIFCRadius + iOne * gridSizeR;
+      Float_t radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + iOne * gridSizeR;
       for (Int_t j = jOne; j < nZColumn - 1; j += jOne) {
         if (iOne == 1 && jOne == 1) {
           sumChargeDensity(i, j) = matrixCharge(i, j);
@@ -319,11 +313,12 @@ void AliTPCPoissonSolver::PoissonRelaxation2D(TMatrixD& matrixV, TMatrixD& matri
 /// \param maxIteration Int_t maximum iteration for relaxation method
 ///
 /// \return A fixed number that has nothing to do with what the function does
-void AliTPCPoissonSolver::PoissonMultiGrid2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn)
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonMultiGrid2D(TMatrixD& matrixV, TMatrixD& matrixCharge, Int_t nRRow, Int_t nZColumn)
 {
   /// Geometry of TPC -- should be use AliTPCParams instead
-  const Float_t gridSizeR = (AliTPCPoissonSolver::fgkOFCRadius - AliTPCPoissonSolver::fgkIFCRadius) / (nRRow - 1);
-  const Float_t gridSizeZ = AliTPCPoissonSolver::fgkTPCZ0 / (nZColumn - 1);
+  const Float_t gridSizeR = (AliTPCPoissonSolver<DataT>::fgkOFCRadius - AliTPCPoissonSolver<DataT>::fgkIFCRadius) / (nRRow - 1);
+  const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (nZColumn - 1);
   const Float_t ratio = gridSizeR * gridSizeR / (gridSizeZ * gridSizeZ);
 
   Int_t nGridRow = 0; // number grid
@@ -407,7 +402,7 @@ void AliTPCPoissonSolver::PoissonMultiGrid2D(TMatrixD& matrixV, TMatrixD& matrix
     std::vector<float> coefficient2(tnRRow);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
     }
@@ -500,14 +495,15 @@ void AliTPCPoissonSolver::PoissonMultiGrid2D(TMatrixD& matrixV, TMatrixD& matrix
 /// \param maxIteration Int_t maximum iteration for relaxation method
 /// \param symmetry Int_t symmetry or not
 ///
-void AliTPCPoissonSolver::PoissonRelaxation3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonRelaxation3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
                                               Int_t nRRow, Int_t nZColumn, Int_t phiSlice, Int_t maxIteration,
                                               Int_t symmetry)
 {
 
-  const Float_t gridSizeR = (AliTPCPoissonSolver::fgkOFCRadius - AliTPCPoissonSolver::fgkIFCRadius) / (nRRow - 1);
+  const Float_t gridSizeR = (AliTPCPoissonSolver<DataT>::fgkOFCRadius - AliTPCPoissonSolver<DataT>::fgkIFCRadius) / (nRRow - 1);
   const Float_t gridSizePhi = TMath::TwoPi() / phiSlice;
-  const Float_t gridSizeZ = AliTPCPoissonSolver::fgkTPCZ0 / (nZColumn - 1);
+  const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (nZColumn - 1);
   const Float_t ratioPhi = gridSizeR * gridSizeR / (gridSizePhi * gridSizePhi);
   const Float_t ratioZ = gridSizeR * gridSizeR / (gridSizeZ * gridSizeZ);
 
@@ -571,7 +567,7 @@ void AliTPCPoissonSolver::PoissonRelaxation3D(TMatrixD** matricesV, TMatrixD** m
     Float_t tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     for (Int_t i = iOne; i < nRRow - 1; i += iOne) {
-      Float_t radius = AliTPCPoissonSolver::fgkIFCRadius + i * gridSizeR;
+      Float_t radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * gridSizeR;
       coefficient1[i] = 1.0 + tempGridSizeR / (2 * radius);
       coefficient2[i] = 1.0 - tempGridSizeR / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -582,7 +578,7 @@ void AliTPCPoissonSolver::PoissonRelaxation3D(TMatrixD** matricesV, TMatrixD** m
       TMatrixD& matrixCharge = *matricesCharge[m];
       TMatrixD& sumChargeDensity = *matricesSumChargeDensity[m];
       for (Int_t i = iOne; i < nRRow - 1; i += iOne) {
-        Float_t radius = AliTPCPoissonSolver::fgkIFCRadius + i * gridSizeR;
+        Float_t radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * gridSizeR;
         for (Int_t j = jOne; j < nZColumn - 1; j += jOne) {
           if (iOne == 1 && jOne == 1) {
             sumChargeDensity(i, j) = matrixCharge(i, j);
@@ -788,14 +784,15 @@ void AliTPCPoissonSolver::PoissonRelaxation3D(TMatrixD** matricesV, TMatrixD** m
 ///    SYMMETRY = 0 if no phi symmetries, and no phi boundary condition
 ///    = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
 ///
-void AliTPCPoissonSolver::PoissonMultiGrid3D2D(TMatrixD** matricesV, TMatrixD** matricesCharge, Int_t nRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonMultiGrid3D2D(TMatrixD** matricesV, TMatrixD** matricesCharge, Int_t nRRow,
                                                Int_t nZColumn, Int_t phiSlice, Int_t symmetry)
 {
 
   const Float_t gridSizeR =
-    (AliTPCPoissonSolver::fgkOFCRadius - AliTPCPoissonSolver::fgkIFCRadius) / (nRRow - 1); // h_{r}
+    (AliTPCPoissonSolver<DataT>::fgkOFCRadius - AliTPCPoissonSolver<DataT>::fgkIFCRadius) / (nRRow - 1); // h_{r}
   const Float_t gridSizePhi = TMath::TwoPi() / phiSlice;                                   // h_{phi}
-  const Float_t gridSizeZ = AliTPCPoissonSolver::fgkTPCZ0 / (nZColumn - 1);                // h_{z}
+  const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (nZColumn - 1);                // h_{z}
   const Float_t ratioPhi =
     gridSizeR * gridSizeR / (gridSizePhi * gridSizePhi);                  // ratio_{phi} = gridSize_{r} / gridSize_{phi}
   const Float_t ratioZ = gridSizeR * gridSizeR / (gridSizeZ * gridSizeZ); // ratio_{Z} = gridSize_{r} / gridSize_{z}
@@ -911,7 +908,7 @@ void AliTPCPoissonSolver::PoissonMultiGrid3D2D(TMatrixD** matricesV, TMatrixD** 
     tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -1028,13 +1025,14 @@ void AliTPCPoissonSolver::PoissonMultiGrid3D2D(TMatrixD** matricesV, TMatrixD** 
 ///    SYMMETRY = 0 if no phi symmetries, and no phi boundary condition
 /// = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
 ///
-void AliTPCPoissonSolver::PoissonMultiGrid3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::PoissonMultiGrid3D(TMatrixD** matricesV, TMatrixD** matricesCharge,
                                              Int_t nRRow, Int_t nZColumn, Int_t phiSlice, Int_t symmetry)
 {
 
   const Float_t gridSizeR =
-    (AliTPCPoissonSolver::fgkOFCRadius - AliTPCPoissonSolver::fgkIFCRadius) / (nRRow - 1); // h_{r}
-  const Float_t gridSizeZ = AliTPCPoissonSolver::fgkTPCZ0 / (nZColumn - 1);                // h_{z}
+    (AliTPCPoissonSolver<DataT>::fgkOFCRadius - AliTPCPoissonSolver<DataT>::fgkIFCRadius) / (nRRow - 1); // h_{r}
+  const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (nZColumn - 1);                // h_{z}
   const Float_t ratioZ = gridSizeR * gridSizeR / (gridSizeZ * gridSizeZ);                  // ratio_{Z} = gridSize_{r} / gridSize_{z}
 
   Float_t gridSizePhi = TMath::TwoPi() / phiSlice; // h_{phi}
@@ -1203,7 +1201,7 @@ void AliTPCPoissonSolver::PoissonMultiGrid3D(TMatrixD** matricesV, TMatrixD** ma
     tempRatioPhi = h * h / (gridSizePhi * gridSizePhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
     tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -1308,7 +1306,8 @@ void AliTPCPoissonSolver::PoissonMultiGrid3D(TMatrixD** matricesV, TMatrixD** ma
 /// Helper function to check if the integer is equal to a power of two
 /// \param i Int_t the number
 /// \return 1 if it is a power of two, else 0
-Int_t AliTPCPoissonSolver::IsPowerOfTwo(Int_t i) const
+template <typename DataT>
+Int_t AliTPCPoissonSolver<DataT>::IsPowerOfTwo(Int_t i) const
 {
   Int_t j = 0;
   while (i > 0) {
@@ -1342,7 +1341,8 @@ Int_t AliTPCPoissonSolver::IsPowerOfTwo(Int_t i) const
 /// \param coefficient3 std::vector<float> coefficient for z
 /// \param coefficient4 std::vector<float> coefficient for f(r,\phi,z)
 ///
-void AliTPCPoissonSolver::Relax3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentCharge, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Relax3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentCharge, const Int_t tnRRow,
                                   const Int_t tnZColumn,
                                   const Int_t phiSlice, const Int_t symmetry, const Float_t h2,
                                   const Float_t tempRatioZ, std::vector<float>& coefficient1,
@@ -1487,7 +1487,8 @@ void AliTPCPoissonSolver::Relax3D(TMatrixD** matricesCurrentV, TMatrixD** matric
 /// \param coefficient1 std::vector<float> coefficient for \f$  V_{x+1,y,z} \f$
 /// \param coefficient2 std::vector<float> coefficient for \f$  V_{x-1,y,z} \f$
 ///
-void AliTPCPoissonSolver::Relax2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentCharge, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Relax2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentCharge, const Int_t tnRRow,
                                   const Int_t tnZColumn,
                                   const Float_t h2, const Float_t tempFourth, const Float_t tempRatio,
                                   std::vector<float>& coefficient1, std::vector<float>& coefficient2)
@@ -1544,7 +1545,8 @@ void AliTPCPoissonSolver::Relax2D(TMatrixD& matricesCurrentV, TMatrixD& matrices
 /// \param coefficient3 std::vector<float> coefficient for z
 /// \param inverseCoefficient4 std::vector<float> inverse coefficient for f(r,\phi,z)
 ///
-void AliTPCPoissonSolver::Residue3D(TMatrixD** residue, TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentCharge,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Residue3D(TMatrixD** residue, TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentCharge,
                                     const Int_t tnRRow,
                                     const Int_t tnZColumn, const Int_t phiSlice, const Int_t symmetry,
                                     const Float_t ih2,
@@ -1631,7 +1633,8 @@ void AliTPCPoissonSolver::Residue3D(TMatrixD** residue, TMatrixD** matricesCurre
 /// \param coefficient1 std::vector<float> coefficient for \f$  V_{x+1,y,z} \f$
 /// \param coefficient2 std::vector<float> coefficient for \f$  V_{x-1,y,z} \f$
 ///
-void AliTPCPoissonSolver::Residue2D(TMatrixD& residue, TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentCharge,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Residue2D(TMatrixD& residue, TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentCharge,
                                     const Int_t tnRRow,
                                     const Int_t tnZColumn, const Float_t ih2, const Float_t inverseTempFourth,
                                     const Float_t tempRatio, std::vector<float>& coefficient1,
@@ -1671,7 +1674,8 @@ void AliTPCPoissonSolver::Residue2D(TMatrixD& residue, TMatrixD& matricesCurrent
 /// \param nRRow const Int_t number of nRRow in the r direction of TPC
 /// \param nZColumn const Int_t number of nZColumn in z direction of TPC
 ///
-void AliTPCPoissonSolver::Restrict2D(TMatrixD& matricesCurrentCharge, TMatrixD& residue, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Restrict2D(TMatrixD& matricesCurrentCharge, TMatrixD& residue, const Int_t tnRRow,
                                      const Int_t tnZColumn)
 {
 
@@ -1722,7 +1726,8 @@ void AliTPCPoissonSolver::Restrict2D(TMatrixD& matricesCurrentCharge, TMatrixD& 
 /// \param nRRow const Int_t number of nRRow in the r direction of TPC
 /// \param nZColumn const Int_t number of nZColumn in z direction of TPC
 ///
-void AliTPCPoissonSolver::RestrictBoundary2D(TMatrixD& matricesCurrentCharge, TMatrixD& residue, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::RestrictBoundary2D(TMatrixD& matricesCurrentCharge, TMatrixD& residue, const Int_t tnRRow,
                                              const Int_t tnZColumn)
 {
   // for boundary
@@ -1756,7 +1761,8 @@ void AliTPCPoissonSolver::RestrictBoundary2D(TMatrixD& matricesCurrentCharge, TM
 /// \param newPhiSlice Int_t number of phiSlice (in phi-direction) for coarser grid
 /// \param oldPhiSlice Int_t number of phiSlice (in phi-direction) for finer grid
 ///
-void AliTPCPoissonSolver::Restrict3D(TMatrixD** matricesCurrentCharge, TMatrixD** residue, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Restrict3D(TMatrixD** matricesCurrentCharge, TMatrixD** residue, const Int_t tnRRow,
                                      const Int_t tnZColumn,
                                      const Int_t newPhiSlice, const Int_t oldPhiSlice)
 {
@@ -1839,7 +1845,8 @@ void AliTPCPoissonSolver::Restrict3D(TMatrixD** matricesCurrentCharge, TMatrixD*
 /// \param newPhiSlice Int_t number of phiSlice (in phi-direction) for coarser grid
 /// \param oldPhiSlice Int_t number of phiSlice (in phi-direction) for finer grid
 ///
-void AliTPCPoissonSolver::RestrictBoundary3D(TMatrixD** matricesCurrentCharge, TMatrixD** residue, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::RestrictBoundary3D(TMatrixD** matricesCurrentCharge, TMatrixD** residue, const Int_t tnRRow,
                                              const Int_t tnZColumn, const Int_t newPhiSlice, const Int_t oldPhiSlice)
 {
 
@@ -1880,7 +1887,8 @@ void AliTPCPoissonSolver::RestrictBoundary3D(TMatrixD** matricesCurrentCharge, T
 /// \param tnRRow Int_t number of grid in nRRow (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
 /// \param tnZColumn Int_t number of grid in nZColumn (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1a
 ///
-void AliTPCPoissonSolver::AddInterp2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentVC, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::AddInterp2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentVC, const Int_t tnRRow,
                                       const Int_t tnZColumn)
 {
   for (Int_t j = 2; j < tnZColumn - 1; j += 2) {
@@ -1927,13 +1935,14 @@ void AliTPCPoissonSolver::AddInterp2D(TMatrixD& matricesCurrentV, TMatrixD& matr
 /// \param newPhiSlice Int_t number of phiSlice (in phi-direction) for coarser grid
 /// \param oldPhiSlice Int_t number of phiSlice (in phi-direction) for finer grid
 ///
-void AliTPCPoissonSolver::AddInterp3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentVC, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::AddInterp3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentVC, const Int_t tnRRow,
                                       const Int_t tnZColumn,
                                       const Int_t newPhiSlice, const Int_t oldPhiSlice)
 {
   // Do restrict 2 D for each slice
 
-  //const Float_t  h   =  (AliTPCPoissonSolver::fgkOFCRadius-AliTPCPoissonSolver::fgkIFCRadius) / ((tnRRow-1)/2); // h_{r}
+  //const Float_t  h   =  (AliTPCPoissonSolver<DataT>::fgkOFCRadius-AliTPCPoissonSolver<DataT>::fgkIFCRadius) / ((tnRRow-1)/2); // h_{r}
   //Float_t radius,ratio;
   //std::vector<float> coefficient1((tnRRow-1) / 2 );  // coefficient1(nRRow) for storing (1 + h_{r}/2r_{i}) from central differences in r direction
   //std::vector<float> coefficient2((tnRRow-1) / 2);  // coefficient2(nRRow) for storing (1 + h_{r}/2r_{i}) from central differences in r direction
@@ -2028,7 +2037,8 @@ void AliTPCPoissonSolver::AddInterp3D(TMatrixD** matricesCurrentV, TMatrixD** ma
 /// \param newPhiSlice Int_t number of phiSlice (in phi-direction) for coarser grid
 /// \param oldPhiSlice Int_t number of phiSlice (in phi-direction) for finer grid
 ///
-void AliTPCPoissonSolver::Interp3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentVC, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Interp3D(TMatrixD** matricesCurrentV, TMatrixD** matricesCurrentVC, const Int_t tnRRow,
                                    const Int_t tnZColumn,
                                    const Int_t newPhiSlice, const Int_t oldPhiSlice)
 {
@@ -2123,7 +2133,8 @@ void AliTPCPoissonSolver::Interp3D(TMatrixD** matricesCurrentV, TMatrixD** matri
 /// \param tnRRow Int_t number of grid in nRRow (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
 /// \param tnZColumn Int_t number of grid in nZColumn (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1
 ///
-void AliTPCPoissonSolver::Interp2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentVC, const Int_t tnRRow,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::Interp2D(TMatrixD& matricesCurrentV, TMatrixD& matricesCurrentVC, const Int_t tnRRow,
                                    const Int_t tnZColumn)
 {
   for (Int_t j = 2; j < tnZColumn - 1; j += 2) {
@@ -2175,7 +2186,8 @@ void AliTPCPoissonSolver::Interp2D(TMatrixD& matricesCurrentV, TMatrixD& matrice
 /// \param tvCharge vector<TMatrixD *> vector of charge distribution in different grids
 /// \param tvResidue vector<TMatrixD *> vector of residue calculation in different grids
 ///
-void AliTPCPoissonSolver::VCycle2D(const Int_t nRRow, const Int_t nZColumn, const Int_t gridFrom, const Int_t gridTo,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::VCycle2D(const Int_t nRRow, const Int_t nZColumn, const Int_t gridFrom, const Int_t gridTo,
                                    const Int_t nPre, const Int_t nPost, const Float_t gridSizeR, const Float_t ratio,
                                    std::vector<TMatrixD*>& tvArrayV,
                                    std::vector<TMatrixD*>& tvCharge, std::vector<TMatrixD*>& tvResidue)
@@ -2209,7 +2221,7 @@ void AliTPCPoissonSolver::VCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
     tempFourth = 1.0 / (2.0 + 2.0 * tempRatio);
     inverseTempFourth = 1.0 / tempFourth;
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
     }
@@ -2250,7 +2262,7 @@ void AliTPCPoissonSolver::VCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
   tempFourth = 1.0 / (2.0 + 2.0 * tempRatio);
 
   for (Int_t i = 1; i < tnRRow - 1; i++) {
-    radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+    radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
     coefficient1[i] = 1.0 + h / (2 * radius);
     coefficient2[i] = 1.0 - h / (2 * radius);
   }
@@ -2281,7 +2293,7 @@ void AliTPCPoissonSolver::VCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
     AddInterp2D(*matricesCurrentV, *matricesCurrentVC, tnRRow, tnZColumn);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
     }
@@ -2319,7 +2331,8 @@ void AliTPCPoissonSolver::VCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
 /// \param tvCharge vector<TMatrixD *> vector of charge distribution in different grids
 /// \param tvResidue vector<TMatrixD *> vector of residue calculation in different grids
 ///
-void AliTPCPoissonSolver::WCycle2D(const Int_t nRRow, const Int_t nZColumn, const Int_t gridFrom, const Int_t gridTo,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::WCycle2D(const Int_t nRRow, const Int_t nZColumn, const Int_t gridFrom, const Int_t gridTo,
                                    const int gamma,
                                    const Int_t nPre, const Int_t nPost, const Float_t gridSizeR, const Float_t ratio,
                                    std::vector<TMatrixD*>& tvArrayV,
@@ -2349,7 +2362,7 @@ void AliTPCPoissonSolver::WCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
     tempFourth = 1.0 / (2.0 + 2.0 * tempRatio);
     inverseTempFourth = 1.0 / tempFourth;
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
     }
@@ -2413,7 +2426,7 @@ void AliTPCPoissonSolver::WCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
     AddInterp2D(*matricesCurrentV, *matricesCurrentVC, tnRRow, tnZColumn);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
     }
@@ -2456,7 +2469,8 @@ void AliTPCPoissonSolver::WCycle2D(const Int_t nRRow, const Int_t nZColumn, cons
 /// \param coefficient4 std::vector<float>& coefficient for relaxation (ratio for grid_r)
 /// \param inverseCoefficient4 std::vector<float>& coefficient for relaxation (inverse coefficient4)
 ///
-void AliTPCPoissonSolver::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, const Int_t phiSlice, const Int_t symmetry,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, const Int_t phiSlice, const Int_t symmetry,
                                      const Int_t gridFrom, const Int_t gridTo, const Int_t nPre, const Int_t nPost,
                                      const Float_t gridSizeR, const Float_t ratioZ, const Float_t ratioPhi,
                                      std::vector<TMatrixD**>& tvArrayV, std::vector<TMatrixD**>& tvCharge,
@@ -2492,7 +2506,7 @@ void AliTPCPoissonSolver::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, co
     tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2546,7 +2560,7 @@ void AliTPCPoissonSolver::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, co
   tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
   for (Int_t i = 1; i < tnRRow - 1; i++) {
-    radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+    radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
     coefficient1[i] = 1.0 + h / (2 * radius);
     coefficient2[i] = 1.0 - h / (2 * radius);
     coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2580,7 +2594,7 @@ void AliTPCPoissonSolver::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, co
     AddInterp3D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, phiSlice, phiSlice);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2626,7 +2640,8 @@ void AliTPCPoissonSolver::VCycle3D2D(const Int_t nRRow, const Int_t nZColumn, co
 /// \param coefficient4 std::vector<float>& coefficient for relaxation (ratio for grid_r)
 /// \param inverseCoefficient4 std::vector<float>& coefficient for relaxation (inverse coefficient4)
 ///
-void AliTPCPoissonSolver::VCycle3D(const Int_t nRRow, const Int_t nZColumn, const Int_t phiSlice, const Int_t symmetry,
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::VCycle3D(const Int_t nRRow, const Int_t nZColumn, const Int_t phiSlice, const Int_t symmetry,
                                    const Int_t gridFrom, const Int_t gridTo,
                                    const Int_t nPre, const Int_t nPost, const Float_t gridSizeR, const Float_t ratioZ,
                                    std::vector<TMatrixD**>& tvArrayV, std::vector<TMatrixD**>& tvCharge,
@@ -2677,7 +2692,7 @@ void AliTPCPoissonSolver::VCycle3D(const Int_t nRRow, const Int_t nZColumn, cons
     tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2731,7 +2746,7 @@ void AliTPCPoissonSolver::VCycle3D(const Int_t nRRow, const Int_t nZColumn, cons
   tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
   for (Int_t i = 1; i < tnRRow - 1; i++) {
-    radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+    radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
     coefficient1[i] = 1.0 + h / (2 * radius);
     coefficient2[i] = 1.0 - h / (2 * radius);
     coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2772,7 +2787,7 @@ void AliTPCPoissonSolver::VCycle3D(const Int_t nRRow, const Int_t nZColumn, cons
     AddInterp3D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, tPhiSlice, otPhiSlice);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2794,7 +2809,8 @@ void AliTPCPoissonSolver::VCycle3D(const Int_t nRRow, const Int_t nZColumn, cons
 /// \param exactSolution TMatrixD** pointer to exact solution (potential) in 3D
 /// \param fPhiSlices const Int_t number of phi slices
 ///
-void AliTPCPoissonSolver::SetExactSolution(TMatrixD** exactSolution, const Int_t fPhiSlices)
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::SetExactSolution(TMatrixD** exactSolution, const Int_t fPhiSlices)
 {
   Double_t maxAbs;
   fExactSolution = exactSolution;
@@ -2817,7 +2833,8 @@ void AliTPCPoissonSolver::SetExactSolution(TMatrixD** exactSolution, const Int_t
 /// \param nZColumn Int_t number of grid in nZColumn (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1
 /// \param phiSlice const Int_t phi slices
 ///
-Double_t AliTPCPoissonSolver::GetExactError(TMatrixD** matricesCurrentV, TMatrixD** tempArrayV, const Int_t phiSlice)
+template <typename DataT>
+Double_t AliTPCPoissonSolver<DataT>::GetExactError(TMatrixD** matricesCurrentV, TMatrixD** tempArrayV, const Int_t phiSlice)
 {
   Double_t error = 0.0;
 
@@ -2843,8 +2860,9 @@ Double_t AliTPCPoissonSolver::GetExactError(TMatrixD** matricesCurrentV, TMatrix
 /// \param nZColumn Int_t number of grid in nZColumn (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1
 /// \param phiSlice const Int_t phi slices
 ///
+template <typename DataT>
 Double_t
-  AliTPCPoissonSolver::GetConvergenceError(TMatrixD** matricesCurrentV, TMatrixD** prevArrayV, const Int_t phiSlice)
+  AliTPCPoissonSolver<DataT>::GetConvergenceError(TMatrixD** matricesCurrentV, TMatrixD** prevArrayV, const Int_t phiSlice)
 {
   Double_t error = 0.0;
 
@@ -2892,7 +2910,8 @@ Double_t
 /// \param coefficient4 std::vector<float>& coefficient for relaxation (ratio for grid_r)
 /// \param inverseCoefficient4 std::vector<float>& coefficient for relaxation (inverse coefficient4)
 ///
-void AliTPCPoissonSolver::VCycle3D2DGPU(
+template <typename DataT>
+void AliTPCPoissonSolver<DataT>::VCycle3D2DGPU(
   const Int_t nRRow, const Int_t nZColumn, const Int_t phiSlice, const Int_t symmetry,
   const Int_t gridFrom, const Int_t gridTo, const Int_t nPre, const Int_t nPost, const Float_t gridSizeR,
   const Float_t ratioZ, const Float_t ratioPhi, std::vector<TMatrixD**>& tvArrayV,
@@ -2926,7 +2945,7 @@ void AliTPCPoissonSolver::VCycle3D2DGPU(
     tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -2980,7 +2999,7 @@ void AliTPCPoissonSolver::VCycle3D2DGPU(
   tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
   for (Int_t i = 1; i < tnRRow - 1; i++) {
-    radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+    radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
     coefficient1[i] = 1.0 + h / (2 * radius);
     coefficient2[i] = 1.0 - h / (2 * radius);
     coefficient3[i] = tempRatioPhi / (radius * radius);
@@ -3014,7 +3033,7 @@ void AliTPCPoissonSolver::VCycle3D2DGPU(
     AddInterp3D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, phiSlice, phiSlice);
 
     for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = AliTPCPoissonSolver::fgkIFCRadius + i * h;
+      radius = AliTPCPoissonSolver<DataT>::fgkIFCRadius + i * h;
       coefficient1[i] = 1.0 + h / (2 * radius);
       coefficient2[i] = 1.0 - h / (2 * radius);
       coefficient3[i] = tempRatioPhi / (radius * radius);

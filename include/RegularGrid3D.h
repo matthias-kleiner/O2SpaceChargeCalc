@@ -25,12 +25,12 @@ struct RegularGrid3D {
   /// \param ix y vertex
   /// \param ix z vertex
   /// \return returns the index to vertex
-  unsigned int getDataIndex(const int ix, const int iy, const int iz) const
+  size_t getDataIndex(const size_t ix, const size_t iy, const size_t iz) const
   {
-    const unsigned int indX = static_cast<unsigned int>(ix);
-    const unsigned int indY = static_cast<unsigned int>(iy);
-    const unsigned int indZ = static_cast<unsigned int>(iz);
-    const unsigned int index = indX + Nx * (indY + indZ * Ny);
+    const size_t indX = ix;
+    const size_t indY = iy;
+    const size_t indZ = iz;
+    const size_t index = indX + Nx * (indY + indZ * Ny);
     return index;
   }
 
@@ -65,7 +65,7 @@ struct RegularGrid3D {
     return indexDim < 0 ? false : (indexDim > static_cast<int>(FNdim[dim] - 1) ? false : true);
   }
 
-  // check if the specified index for given dimension lies in the grid
+  // check if the specified position for given dimension lies in the grid
   bool isInGrid(const DataT pos, const unsigned int dim) const
   {
     if (pos < mMin[dim]) {
@@ -81,22 +81,22 @@ struct RegularGrid3D {
 
   const DataT& operator()(size_t ix, size_t iy, size_t iz) const
   {
-    const unsigned int ind = getDataIndex(ix, iy, iz);
+    const size_t ind = getDataIndex(ix, iy, iz);
     return mGridData.get()[ind];
   }
 
   DataT& operator()(size_t ix, size_t iy, size_t iz)
   {
-    const unsigned int ind = getDataIndex(ix, iy, iz);
+    const size_t ind = getDataIndex(ix, iy, iz);
     return mGridData.get()[ind];
   }
 
   /// \param dim dimension of interest
   /// \return returns the number of vertices for given dimension for the new grid
-  static constexpr unsigned int getN(unsigned int dim) { return FNdim[dim]; }
-  static constexpr unsigned int getNX() { return FNdim[FX]; }
-  static constexpr unsigned int getNY() { return FNdim[FY]; }
-  static constexpr unsigned int getNZ() { return FNdim[FZ]; }
+  static constexpr size_t getN(unsigned int dim) { return FNdim[dim]; }
+  static constexpr size_t getNX() { return FNdim[FX]; }
+  static constexpr size_t getNY() { return FNdim[FY]; }
+  static constexpr size_t getNZ() { return FNdim[FZ]; }
 
   static constexpr unsigned int getDim() { return FDim; }
   static constexpr unsigned int getFX() { return FX; }
@@ -144,8 +144,8 @@ struct RegularGrid3D {
   const Vector<DataT, FDim> mInvSpacing{};                       // inverse spacing of grid
   const Vector<DataT, FDim> mMaxIndex{{Nx - 1, Ny - 1, Nz - 1}}; // max index which is on the grid in all dimensions
 
-  static constexpr unsigned int FNdim[FDim]{Nx, Ny, Nz};
-  static constexpr unsigned int FNdataPoints{Nx * Ny * Nz};
+  static constexpr size_t FNdim[FDim]{Nx, Ny, Nz};
+  static constexpr size_t FNdataPoints{Nx * Ny * Nz};
 
   std::unique_ptr<DataT[]> mGridData = std::make_unique<DataT[]>(FNdataPoints);
 };

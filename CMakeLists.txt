@@ -23,4 +23,4 @@ find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
 
 
-target_link_libraries(executable PRIVATE OpenMP::OpenMP_CXX Vc::Vc ${ROOT_LIBRARIES} Vc::Vc)
+target_link_libraries(executable PRIVATE OpenMP::OpenMP_CXX Vc::Vc ${ROOT_LIBRARIES})

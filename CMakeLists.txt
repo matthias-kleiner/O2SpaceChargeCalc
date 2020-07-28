@@ -18,7 +18,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native")
 
 set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3")
 
-add_executable(executable main.cpp include/TriCubic.h include/RegularGrid3D.h include/matrix.h include/O2TPCSpaceCharge3DCalc.h include/AliRoot/AliTPCPoissonSolver.cxx)
+add_executable(executable main.cpp src/include/TriCubic.h src/include/RegularGrid3D.h src/include/matrix.h src/O2TPCSpaceCharge3DCalc.cxx src/include/AliRoot/AliTPCPoissonSolver.cxx)
 find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
 

@@ -1,3 +1,18 @@
+// Copyright CERN and copyright holders of ALICE O2. This software is
+// distributed under the terms of the GNU General Public License v3 (GPL
+// Version 3), copied verbatim in the file "COPYING".
+//
+// See http://alice-o2.web.cern.ch/license for full licensing information.
+//
+// In applying this license CERN does not waive the privileges and immunities
+// granted to it by virtue of its status as an Intergovernmental Organization
+// or submit itself to any jurisdiction.
+
+/// \file  RegularGrid3D.h
+/// \brief Definition of RegularGrid3D class
+///
+/// \author  Matthias Kleiner <matthias.kleiner@cern.ch>
+
 #ifndef RegularGrid3D_H
 #define RegularGrid3D_H
 
@@ -12,9 +27,12 @@ struct RegularGrid3D {
   RegularGrid3D(const DataT* gridData, const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}}
   {
     initArray(gridData);
+    initLists(spacingX, spacingY, spacingZ);
   }
 
-  RegularGrid3D(const DataT xmin=0, const DataT ymin=0, const DataT zmin=0, const DataT spacingX=1, const DataT spacingY=1, const DataT spacingZ=1) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}} {}
+  RegularGrid3D(const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}} {
+    initLists(spacingX, spacingY, spacingZ);
+  }
 
   void initArray(const DataT* gridData)
   {
@@ -134,6 +152,19 @@ struct RegularGrid3D {
     }
   }
 
+
+  DataT getXVertex(const size_t index) const{
+    return listXVertices[index];
+  }
+
+  DataT getYVertex(const size_t index) const{
+    return listYVertices[index];
+  }
+
+  DataT getZVertex(const size_t index) const{
+    return listZVertices[index];
+  }
+
  private:
   static constexpr unsigned int FDim = 3; // dimensions of the grid (only 3 supported)
   static constexpr unsigned int FX = 0;   // index for x coordinate
@@ -148,6 +179,25 @@ struct RegularGrid3D {
   static constexpr size_t FNdataPoints{Nx * Ny * Nz};
 
   std::unique_ptr<DataT[]> mGridData = std::make_unique<DataT[]>(FNdataPoints);
+
+  DataT listXVertices[Nx]{};
+  DataT listYVertices[Ny]{};
+  DataT listZVertices[Nz]{};
+
+  void initLists(const DataT spacingX, const DataT spacingY, const DataT spacingZ){
+
+    for(size_t i=0; i<Nx; ++i){
+      listXVertices[i] = getGridMinX() + i*spacingX;
+    }
+
+    for(size_t i=0; i<Ny; ++i){
+      listYVertices[i] = getGridMinY() + i*spacingY;
+    }
+
+    for(size_t i=0; i<Nz; ++i){
+      listZVertices[i] = getGridMinZ() + i*spacingZ;
+    }
+  }
 };
 
 template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>

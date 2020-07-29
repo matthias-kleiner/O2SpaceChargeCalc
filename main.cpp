@@ -4,32 +4,56 @@
 // for debugging
 #include "TTree.h"
 #include "TFile.h"
+#include <chrono>
 
 int main()
 {
   using DataT = float;
 
-  const unsigned int nGridR = 17;
-  const unsigned int nGridZ = 17;
-  const unsigned int nGridPhi = 90;
-  O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalc;
-  spaceCharge3DCalc.setOmegaTauT1T2(0.32f, 1, 1);
-  spaceCharge3DCalc.setIntegrationSteps(3);
+  const unsigned int nGridR = 129;
+  const unsigned int nGridZ = 129;
+  const unsigned int nGridPhi = 180;
+  O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcAnalytical;
+  spaceCharge3DCalcAnalytical.setOmegaTauT1T2(0.32f, 1, 1);
+  spaceCharge3DCalcAnalytical.setIntegrationSteps(10);
 
-  AnalyticalFields<DataT> formulas;
+  O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcNumerical;
+  spaceCharge3DCalcNumerical.setOmegaTauT1T2(0.32f, 1, 1);
+  spaceCharge3DCalcNumerical.setIntegrationSteps(3);
 
-  // std::cout<<"eval: "<<formulas.evalDensity(100, 1, 0)<<std::endl;
-  // return 1;
-
+  AnalyticalFields<DataT> anaFields;
   const int maxIteration = 300;
   const DataT stoppingConvergence = 1e-8;
-  spaceCharge3DCalc.fillBoundaryAndChargeDensities(formulas, maxIteration, stoppingConvergence);
-  spaceCharge3DCalc.calcEField();
-  spaceCharge3DCalc.calcLocalDistortionsCorrections(false, formulas); // local distortion calculation
-  spaceCharge3DCalc.calcLocalDistortionsCorrections(true, formulas); // local correction calculation
+
+  auto start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcNumerical.fillBoundaryAndChargeDensities(anaFields, maxIteration, stoppingConvergence);
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<float> diff = end - start;
+  std::cout << "Step 1: Poisson solver: " << diff.count() << std::endl;
+
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcNumerical.calcEField();
+  end = std::chrono::high_resolution_clock::now();
+  diff = end - start;
+  std::cout << "Step 2: Electric Field Calculation: " << diff.count() << std::endl;
+
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
+  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields);  // local correction calculation
+  end = std::chrono::high_resolution_clock::now();
+  diff = end - start;
+  std::cout << "Step 3: local distortions and corrections analytical: " << diff.count() << std::endl;
+
+  NumericalFields<DataT, nGridR, nGridZ, nGridPhi> numFields(spaceCharge3DCalcNumerical.getGridEr(), spaceCharge3DCalcNumerical.getGridEz(), spaceCharge3DCalcNumerical.getGridEphi());
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(false, numFields); // local distortion calculation
+  spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(true, numFields);  // local correction calculation
+  end = std::chrono::high_resolution_clock::now();
+  diff = end - start;
+  std::cout << "Step 3: local distortions and corrections numerical: " << diff.count() << std::endl;
 
   // dump to disk
-  TFile fDebug("debug.root", "RECREATE");
+  TFile fDebug(Form("debug_%i_%i_%i.root", nGridR, nGridZ, nGridPhi), "RECREATE");
   TTree tree("tree", "tree");
   int ir{0};
   int iz{0};
@@ -42,6 +66,14 @@ int main()
   DataT localcCorrZ{0};
   DataT localcCorrRPhi{0};
 
+  DataT localcDistRNum{0};
+  DataT localcDistZNum{0};
+  DataT localcDistRPhiNum{0};
+
+  DataT localcCorrRNum{0};
+  DataT localcCorrZNum{0};
+  DataT localcCorrRPhiNum{0};
+
   DataT eRAna{0};
   DataT eZAna{0};
   DataT ePhiAna{0};
@@ -52,13 +84,22 @@ int main()
   tree.Branch("ir", &ir);
   tree.Branch("iz", &iz);
   tree.Branch("iphi", &iphi);
-  tree.Branch("ldistr", &localcDistR);
-  tree.Branch("ldistz", &localcDistZ);
-  tree.Branch("ldistrphi", &localcDistRPhi);
 
-  tree.Branch("lcorrr", &localcCorrR);
-  tree.Branch("lcorrz", &localcCorrZ);
-  tree.Branch("lcorrrphi", &localcCorrRPhi);
+  tree.Branch("ldistrana", &localcDistR);
+  tree.Branch("ldistzana", &localcDistZ);
+  tree.Branch("ldistrphiana", &localcDistRPhi);
+
+  tree.Branch("lcorrrana", &localcCorrR);
+  tree.Branch("lcorrzana", &localcCorrZ);
+  tree.Branch("lcorrrphiana", &localcCorrRPhi);
+
+  tree.Branch("ldistrnum", &localcDistRNum);
+  tree.Branch("ldistznum", &localcDistZNum);
+  tree.Branch("ldistrphinum", &localcDistRPhiNum);
+
+  tree.Branch("lcorrrnum", &localcCorrRNum);
+  tree.Branch("lcorrznum", &localcCorrZNum);
+  tree.Branch("lcorrrphinum", &localcCorrRPhiNum);
 
   tree.Branch("erana", &eRAna);
   tree.Branch("ezana", &eZAna);
@@ -66,6 +107,40 @@ int main()
   tree.Branch("ernum", &eRNum);
   tree.Branch("eznum", &eZNum);
   tree.Branch("ephinum", &ePhiNum);
+
+  // debug tree for tricubic interpolation
+  TTree treeInterpolation("inter", "inter");
+  DataT r{0};
+  DataT phi{0};
+  DataT z{0};
+  treeInterpolation.Branch("r", &r);
+  treeInterpolation.Branch("phi", &phi);
+  treeInterpolation.Branch("z", &z);
+  treeInterpolation.Branch("erana", &eRAna);
+  treeInterpolation.Branch("ezana", &eZAna);
+  treeInterpolation.Branch("ephiana", &ePhiAna);
+  treeInterpolation.Branch("ernum", &eRNum);
+  treeInterpolation.Branch("eznum", &eZNum);
+  treeInterpolation.Branch("ephinum", &ePhiNum);
+
+  for (size_t indr = 0; indr < nGridR - 1; ++indr) {
+    for (size_t indphi = 0; indphi < nGridPhi - 1; ++indphi) {
+      for (size_t indz = 0; indz < nGridZ - 1; ++indz) {
+        // interpolate at theses positions
+        r = spaceCharge3DCalcAnalytical.getRVertex(indr) + 0.5 * spaceCharge3DCalcAnalytical.getGridSpacingR();
+        z = spaceCharge3DCalcAnalytical.getZVertex(indz) + 0.5 * spaceCharge3DCalcAnalytical.getGridSpacingZ();
+        phi = spaceCharge3DCalcAnalytical.getPhiVertex(indphi) + 0.5 * spaceCharge3DCalcAnalytical.getGridSpacingPhi();
+        eRNum = numFields.evalEr(z, r, phi);
+        eZNum = numFields.evalEz(z, r, phi);
+        ePhiNum = numFields.evalEphi(z, r, phi);
+
+        eZAna = anaFields.evalEz(z, r, phi);
+        eRAna = anaFields.evalEr(z, r, phi);
+        ePhiAna = anaFields.evalEphi(z, r, phi);
+        treeInterpolation.Fill();
+      }
+    }
+  }
 
   // loop over regular grid
   for (size_t indr = 0; indr < nGridR; ++indr) {
@@ -75,29 +150,42 @@ int main()
         iz = indz;
         iphi = indphi;
 
-        localcDistR = spaceCharge3DCalc.getLocalDistR(indz,indr,indphi);
-        localcDistZ = spaceCharge3DCalc.getLocalDistZ(indz,indr,indphi);
-        localcDistRPhi = spaceCharge3DCalc.getLocalDistRPhi(indz,indr,indphi);
+        // get local distortions and local corrections calclulated by the the analytical Efield
+        localcDistR = spaceCharge3DCalcAnalytical.getLocalDistR(indz, indr, indphi);
+        localcDistZ = spaceCharge3DCalcAnalytical.getLocalDistZ(indz, indr, indphi);
+        localcDistRPhi = spaceCharge3DCalcAnalytical.getLocalDistRPhi(indz, indr, indphi);
 
-        localcCorrR = spaceCharge3DCalc.getLocalCorrR(indz,indr,indphi);
-        localcCorrZ = spaceCharge3DCalc.getLocalCorrZ(indz,indr,indphi);
-        localcCorrRPhi = spaceCharge3DCalc.getLocalCorrRPhi(indz,indr,indphi);
+        localcCorrR = spaceCharge3DCalcAnalytical.getLocalCorrR(indz, indr, indphi);
+        localcCorrZ = spaceCharge3DCalcAnalytical.getLocalCorrZ(indz, indr, indphi);
+        localcCorrRPhi = spaceCharge3DCalcAnalytical.getLocalCorrRPhi(indz, indr, indphi);
 
-        eZNum = spaceCharge3DCalc.getEz(indz,indr,indphi);
-        eRNum = spaceCharge3DCalc.getEr(indz,indr,indphi);
-        ePhiNum = spaceCharge3DCalc.getEphi(indz,indr,indphi);
+        // get local distortions and local corrections calclulated by the the analytical Efield
+        localcDistRNum = spaceCharge3DCalcNumerical.getLocalDistR(indz, indr, indphi);
+        localcDistZNum = spaceCharge3DCalcNumerical.getLocalDistZ(indz, indr, indphi);
+        localcDistRPhiNum = spaceCharge3DCalcNumerical.getLocalDistRPhi(indz, indr, indphi);
 
-        const DataT radius = spaceCharge3DCalc.getRVertex(indr);
-        const DataT z = spaceCharge3DCalc.getZVertex(indz);
-        const DataT phi = spaceCharge3DCalc.getPhiVertex(indphi);
-        eZAna = formulas.evalEz(z, radius, phi);
-        eRAna = formulas.evalEr(z, radius, phi);
-        ePhiAna = formulas.evalEphi(z, radius, phi);
+        localcCorrRNum = spaceCharge3DCalcNumerical.getLocalCorrR(indz, indr, indphi);
+        localcCorrZNum = spaceCharge3DCalcNumerical.getLocalCorrZ(indz, indr, indphi);
+        localcCorrRPhiNum = spaceCharge3DCalcNumerical.getLocalCorrRPhi(indz, indr, indphi);
+
+        // get numerically calculated Efield
+        eZNum = spaceCharge3DCalcNumerical.getEz(indz, indr, indphi);
+        eRNum = spaceCharge3DCalcNumerical.getEr(indz, indr, indphi);
+        ePhiNum = spaceCharge3DCalcNumerical.getEphi(indz, indr, indphi);
+
+        // get analytical e field
+        const DataT radius = spaceCharge3DCalcAnalytical.getRVertex(indr);
+        z = spaceCharge3DCalcAnalytical.getZVertex(indz);
+        phi = spaceCharge3DCalcAnalytical.getPhiVertex(indphi);
+        eZAna = anaFields.evalEz(z, radius, phi);
+        eRAna = anaFields.evalEr(z, radius, phi);
+        ePhiAna = anaFields.evalEphi(z, radius, phi);
 
         tree.Fill();
       }
     }
   }
+  treeInterpolation.Write();
   tree.Write();
   fDebug.Close();
 

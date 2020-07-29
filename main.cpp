@@ -16,9 +16,17 @@ int main()
   spaceCharge3DCalc.setOmegaTauT1T2(0.32f, 1, 1);
   spaceCharge3DCalc.setIntegrationSteps(3);
 
-  const Formulas<DataT> formulas;
-  spaceCharge3DCalc.calcLocalDistortionsCorrections(false, formulas);
-  spaceCharge3DCalc.calcLocalDistortionsCorrections(true, formulas);
+  Formulas<DataT> formulas;
+
+  // std::cout<<"eval: "<<formulas.evalDensity(100, 1, 0)<<std::endl;
+  // return 1;
+
+  const int maxIteration = 300;
+  const DataT stoppingConvergence = 1e-8;
+  spaceCharge3DCalc.fillBoundaryAndChargeDensities(formulas, maxIteration, stoppingConvergence);
+  spaceCharge3DCalc.calcEField();
+  spaceCharge3DCalc.calcLocalDistortionsCorrections(false, formulas); // local distortion calculation
+  spaceCharge3DCalc.calcLocalDistortionsCorrections(true, formulas); // local correction calculation
 
   // dump to disk
   TFile fDebug("debug.root", "RECREATE");

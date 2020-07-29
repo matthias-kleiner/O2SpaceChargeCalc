@@ -20,7 +20,6 @@
 #include "AliRoot/AliTPCPoissonSolver.h"
 
 // Root includes
-#include "TFormula.h"
 
 #ifdef WITH_OPENMP
 #include <omp.h>
@@ -30,7 +29,7 @@ template <typename DataT = float>
 struct Formulas {
 
   DataT parA{1e-5}; ///< parameter [0] of functions
-  DataT parB{0.5}; ///< parameter [1] of functions
+  DataT parB{0.5};  ///< parameter [1] of functions
   DataT parC{1e-4}; ///< parameter [2] of functions
 
   /// \param r r coordinate
@@ -83,9 +82,9 @@ struct Formulas {
     return -parA * (std::pow((-r + 254.5 + 83.5), 4) - 338.0 * std::pow((-r + 254.5 + 83.5), 3) + 21250.75 * std::pow((-r + 254.5 + 83.5), 2)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125));
   };
 
-  /// analytical space charge density
+  /// analytical space charge - NOTE: if the space charge density is calculated analytical there would be a - sign in the formula (-parA)  - however since its an e- the sign is flipped (IS THIS CORRECT??? see for minus sign: AliTPCSpaceCharge3DCalc::SetPotentialBoundaryAndChargeFormula)-
   std::function<DataT(DataT, DataT, DataT)> densityFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
-    return -parA * ((1 / r * 16 * (-3311250 + 90995.5 * r - 570.375 * r * r + r * r * r)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125)) +
+    return parA * ((1 / r * 16 * (-3311250 + 90995.5 * r - 570.375 * r * r + r * r * r)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125)) +
                     (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * std::pow(-r + 254.5 + 83.5, 2)) / (r * r) * std::exp(-1 * parC * (z - 125) * (z - 125)) * -2 * parB * parB * std::cos(2 * parB * phi) +
                     (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * std::pow(-r + 254.5 + 83.5, 2)) * std::cos(parB * phi) * std::cos(parB * phi) * 2 * parC * std::exp(-1 * parC * (z - 125) * (z - 125)) * (2 * parC * (z - 125) * (z - 125) - 1));
   };
@@ -119,7 +118,7 @@ class O2TPCSpaceCharge3DCalc
 
   // stepp 0:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step = 0: Fill Boundary and Charge Densities"));
-  void fillBoundaryAndChargeDensities();
+  void fillBoundaryAndChargeDensities(Formulas<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence);
 
   // stepp 1:
   //Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 1: Poisson solver: %f\n", w.CpuTime()));
@@ -131,15 +130,12 @@ class O2TPCSpaceCharge3DCalc
 
   // stepp 3:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 3: Local distortion and correction cpu time: %f\n", w.CpuTime()));
-  // template<typename structFields>
-  // void calcLocalDistortionsCorrections(structFields formulaStruct);
-
-  /// type=0 -> distortions, type=1->corrections
-  template<typename ElectricFields = Formulas<DataT>>
+  /// lcorrections=false -> distortions, lcorrections=true->corrections
+  template <typename ElectricFields = Formulas<DataT>>
   void calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct);
 
   /// calculate distortions or corrections analytical with given funcion
-  void getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, Formulas<DataT> formulaStruct) const;
+  void getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, Formulas<DataT>& formulaStruct) const;
 
   //step 4:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
@@ -200,6 +196,11 @@ class O2TPCSpaceCharge3DCalc
 
   void setIntegrationSteps(const int nSteps) { mIntegrationSteps = nSteps; }
 
+  /// numerical integration strategys
+  enum IntegrationStrategy { Trapezoidal = 0,
+                             Simpson = 1,
+                             Root = 2 };
+
  private:
   using ASolv = AliTPCPoissonSolver<DataT>;
 
@@ -209,7 +210,7 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT mRMin = ASolv::fgkIFCRadius;                                            ///< min radius
   static constexpr DataT mZMin = 0;                                                              ///< min z coordinate
   static constexpr DataT mPhiMin = 0;                                                            ///< min phi coordinate
-  int mNumericalIntegrationStrategy = 1;                                                         ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
+  int mNumericalIntegrationStrategy = Simpson;                                                   ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
   int mIntegrationSteps = 1;                                                                     ///< number of integration steps performed between each bin in Z. e.g.: 1: direct integration from z[i] -> z[i+1]    2: z[i] -> z[i] + (z[i+1] - z[i])/2 > z[i+1]
 
   DataT fC0 = 0.f; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
@@ -230,6 +231,21 @@ class O2TPCSpaceCharge3DCalc
     return mGrid3D.getXVertex(index);
   }
 
+  DataT getInvSpacingR() const
+  {
+    return mGrid3D.getInvSpacingY();
+  }
+
+  DataT getInvSpacingZ() const
+  {
+    return mGrid3D.getInvSpacingX();
+  }
+
+  DataT getInvSpacingPhi() const
+  {
+    return mGrid3D.getInvSpacingZ();
+  }
+
   RegularGrid3D<DataT, Nz, Nr, Nphi> mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< this grid contains the values for the local distortions/corrections, electric field etc.
 
   RegularGrid3D<DataT, Nz, Nr, Nphi> mLocalDistdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
@@ -239,6 +255,12 @@ class O2TPCSpaceCharge3DCalc
   RegularGrid3D<DataT, Nz, Nr, Nphi> mLocalCorrdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid3D<DataT, Nz, Nr, Nphi> mLocalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid3D<DataT, Nz, Nr, Nphi> mLocalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+
+  RegularGrid3D<DataT, Nz, Nr, Nphi> mPotential{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid3D<DataT, Nz, Nr, Nphi> mElectricFieldEr{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid3D<DataT, Nz, Nr, Nphi> mElectricFieldEz{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid3D<DataT, Nz, Nr, Nphi> mElectricFieldEphi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+
 };
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
@@ -293,6 +315,5 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
     }
   }
 }
-
 
 #endif

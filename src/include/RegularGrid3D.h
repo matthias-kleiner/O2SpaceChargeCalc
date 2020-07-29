@@ -204,7 +204,7 @@ template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
 std::ostream& operator<<(std::ostream& out, const RegularGrid3D<DataT, Nx, Ny, Nz>& cont)
 {
   out.precision(3);
-  auto&& w = std::setw(6);
+  auto&& w = std::setw(9);
 
   for (unsigned int iz = 0; iz < cont.getNZ(); ++iz) {
     // print top x row

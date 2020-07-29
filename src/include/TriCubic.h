@@ -190,73 +190,45 @@ class TriCubicInterpolator
     const size_t i_xp2_yp2_zp2 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[3];
 
     // load values to tmp Vc
-    const Vector<DataT, 24> vecDeriv1A{ {
-      mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1],
-      mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1],
-      mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2]
-    }};
+    const Vector<DataT, 24> vecDeriv1A{{mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1],
+                                        mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1],
+                                        mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2]}};
 
-    const Vector<DataT, 24> vecDeriv1B{ {
-      mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1],
-      mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1],  mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1],
-      mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z]
-    }};
+    const Vector<DataT, 24> vecDeriv1B{{mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1],
+                                        mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1],
+                                        mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z]}};
 
-    const Vector<DataT, 24> vecDeriv2A{{
-      mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1],
-      mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2],
-      mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_x_yp2_zp2], mGridData[i_xp1_yp2_zp2]
-    }};
+    const Vector<DataT, 24> vecDeriv2A{{mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1],
+                                        mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2],
+                                        mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_x_yp2_zp2], mGridData[i_xp1_yp2_zp2]}};
 
-    const Vector<DataT, 24> vecDeriv2B{{
-      mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1],
-      mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2],
-      mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_ym1_zp2], mGridData[i_xp1_ym1_zp2], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2]
-    }};
+    const Vector<DataT, 24> vecDeriv2B{{mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1],
+                                        mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2],
+                                        mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_ym1_zp2], mGridData[i_xp1_ym1_zp2], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2]}};
 
-    const Vector<DataT, 24> vecDeriv2C{{
-      mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1],
-      mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z],
-      mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z]
-    }};
+    const Vector<DataT, 24> vecDeriv2C{{mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1],
+                                        mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z],
+                                        mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z]}};
 
-    const Vector<DataT, 24> vecDeriv2D{{
-      mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1],
-      mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z],
-      mGridData[i_x_ym1_zm1], mGridData[i_xp1_ym1_zm1], mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z]
-    }};
+    const Vector<DataT, 24> vecDeriv2D{{mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1],
+                                        mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z],
+                                        mGridData[i_x_ym1_zm1], mGridData[i_xp1_ym1_zm1], mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z]}};
 
-    const Vector<DataT, 8> vecDeriv3A{{
-      mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2], mGridData[i_xp1_yp2_zp2], mGridData[i_xp2_yp2_zp2]
-    }};
+    const Vector<DataT, 8> vecDeriv3A{{mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2], mGridData[i_xp1_yp2_zp2], mGridData[i_xp2_yp2_zp2]}};
 
-    const Vector<DataT, 8> vecDeriv3B{{
-      mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xm1_yp2_zp2], mGridData[i_x_yp2_zp2]
-    }};
+    const Vector<DataT, 8> vecDeriv3B{{mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xm1_yp2_zp2], mGridData[i_x_yp2_zp2]}};
 
-    const Vector<DataT, 8> vecDeriv3C{{
-      mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_ym1_zp2], mGridData[i_xp2_ym1_zp2], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2]
-    }};
+    const Vector<DataT, 8> vecDeriv3C{{mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_ym1_zp2], mGridData[i_xp2_ym1_zp2], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2]}};
 
-    const Vector<DataT, 8> vecDeriv3D{{
-      mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_ym1_zp2], mGridData[i_x_ym1_zp2], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2]
-    }};
+    const Vector<DataT, 8> vecDeriv3D{{mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_ym1_zp2], mGridData[i_x_ym1_zp2], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2]}};
 
-    const Vector<DataT, 8> vecDeriv3E{{
-      mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_xp2_yp2_zm1], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z]
-    }};
+    const Vector<DataT, 8> vecDeriv3E{{mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_xp2_yp2_zm1], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z]}};
 
-    const Vector<DataT, 8> vecDeriv3F{{
-      mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_yp2_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z]
-    }};
+    const Vector<DataT, 8> vecDeriv3F{{mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_yp2_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z]}};
 
-    const Vector<DataT, 8> vecDeriv3G{{
-      mGridData[i_xp1_ym1_zm1], mGridData[i_xp2_ym1_zm1], mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z]
-    }};
+    const Vector<DataT, 8> vecDeriv3G{{mGridData[i_xp1_ym1_zm1], mGridData[i_xp2_ym1_zm1], mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z]}};
 
-    const Vector<DataT, 8> vecDeriv3H{{
-      mGridData[i_xm1_ym1_zm1], mGridData[i_x_ym1_zm1], mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z]
-    }};
+    const Vector<DataT, 8> vecDeriv3H{{mGridData[i_xm1_ym1_zm1], mGridData[i_x_ym1_zm1], mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z]}};
 
     const DataT fac1{0.5};
     const Vector<DataT, 24> vfac1{
@@ -277,19 +249,16 @@ class TriCubicInterpolator
     const Vector<DataT, 24> vecDeriv2Res{vfac2 * (vecDeriv2A - vecDeriv2B - vecDeriv2C + vecDeriv2D)};
     const Vector<DataT, 8> vecDeriv3Res{vfac3 * (vecDeriv3A - vecDeriv3B - vecDeriv3C + vecDeriv3D - vecDeriv3E + vecDeriv3F + vecDeriv3G - vecDeriv3H)};
 
-    const Vector<DataT, 64> matrixPar{{
-      mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1],
-      vecDeriv1Res[0], vecDeriv1Res[1], vecDeriv1Res[2], vecDeriv1Res[3], vecDeriv1Res[4], vecDeriv1Res[5], vecDeriv1Res[6], vecDeriv1Res[7], vecDeriv1Res[8], vecDeriv1Res[9], vecDeriv1Res[10],
-      vecDeriv1Res[11], vecDeriv1Res[12], vecDeriv1Res[13], vecDeriv1Res[14], vecDeriv1Res[15], vecDeriv1Res[16], vecDeriv1Res[17], vecDeriv1Res[18], vecDeriv1Res[19], vecDeriv1Res[20], vecDeriv1Res[21],
-      vecDeriv1Res[22], vecDeriv1Res[23], vecDeriv2Res[0], vecDeriv2Res[1], vecDeriv2Res[2], vecDeriv2Res[3], vecDeriv2Res[4], vecDeriv2Res[5], vecDeriv2Res[6], vecDeriv2Res[7], vecDeriv2Res[8], vecDeriv2Res[9],
-      vecDeriv2Res[10], vecDeriv2Res[11], vecDeriv2Res[12], vecDeriv2Res[13], vecDeriv2Res[14], vecDeriv2Res[15], vecDeriv2Res[16], vecDeriv2Res[17], vecDeriv2Res[18], vecDeriv2Res[19], vecDeriv2Res[20],
-      vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]
-    }};
+    const Vector<DataT, 64> matrixPar{{mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1],
+                                       vecDeriv1Res[0], vecDeriv1Res[1], vecDeriv1Res[2], vecDeriv1Res[3], vecDeriv1Res[4], vecDeriv1Res[5], vecDeriv1Res[6], vecDeriv1Res[7], vecDeriv1Res[8], vecDeriv1Res[9], vecDeriv1Res[10],
+                                       vecDeriv1Res[11], vecDeriv1Res[12], vecDeriv1Res[13], vecDeriv1Res[14], vecDeriv1Res[15], vecDeriv1Res[16], vecDeriv1Res[17], vecDeriv1Res[18], vecDeriv1Res[19], vecDeriv1Res[20], vecDeriv1Res[21],
+                                       vecDeriv1Res[22], vecDeriv1Res[23], vecDeriv2Res[0], vecDeriv2Res[1], vecDeriv2Res[2], vecDeriv2Res[3], vecDeriv2Res[4], vecDeriv2Res[5], vecDeriv2Res[6], vecDeriv2Res[7], vecDeriv2Res[8], vecDeriv2Res[9],
+                                       vecDeriv2Res[10], vecDeriv2Res[11], vecDeriv2Res[12], vecDeriv2Res[13], vecDeriv2Res[14], vecDeriv2Res[15], vecDeriv2Res[16], vecDeriv2Res[17], vecDeriv2Res[18], vecDeriv2Res[19], vecDeriv2Res[20],
+                                       vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]}};
 
     // calc coeffiecients
     mCoefficients = mMatrixA * matrixPar;
   }
-
 
   DataT interpolate(const Vector<DataT, 3>& pos) const
   {
@@ -514,9 +483,9 @@ class TriCubicInterpolator
 
   mutable bool mInitialized = false;             ///< sets the flag if the coefficients are evaluated at least once
   mutable Vector<unsigned int, FDim> mLastInd{}; ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for one-the last cell are stored)
-  const bool mCircularX{}; ///< sets circular padding in x dimension
-  const bool mCircularY{}; ///< sets circular padding in y dimension
-  const bool mCircularZ{}; ///< sets circular padding in z dimension
+  const bool mCircularX{};                       ///< sets circular padding in x dimension
+  const bool mCircularY{};                       ///< sets circular padding in y dimension
+  const bool mCircularZ{};                       ///< sets circular padding in z dimension
 };
 
 #endif

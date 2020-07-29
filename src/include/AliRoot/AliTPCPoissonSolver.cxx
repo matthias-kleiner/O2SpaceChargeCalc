@@ -20,9 +20,10 @@
 #include <TMath.h>
 #include "AliTPCPoissonSolver.h"
 
+#include "Rtypes.h"
 /// \cond CLASSIMP
 // ClassImp(AliTPCPoissonSolver);
-templateClassImp(AliTPCPoissonSolver);
+// templateClassImp(AliTPCPoissonSolver);
 /// \endcond
 
 /// constructor
@@ -3048,3 +3049,6 @@ void AliTPCPoissonSolver<DataT>::VCycle3D2DGPU(
     } // end post smoothing
   }
 }
+
+template class AliTPCPoissonSolver<float>;
+template class AliTPCPoissonSolver<double>;

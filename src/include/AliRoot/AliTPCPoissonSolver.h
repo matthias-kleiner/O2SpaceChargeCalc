@@ -113,7 +113,7 @@ class AliTPCPoissonSolver : public TNamed
   static constexpr DataT fgke0{8.854187817e-12};        ///< vacuum permittivity [A·s/(V·m)]
 
   static constexpr DataT fgExactErr{1e-4};         ///< Error tolerated
-  static constexpr DataT fgConvergenceError{1e-3}; ///< Error tolerated
+  inline static DataT fgConvergenceError{1e-3}; ///< Error tolerated
   Int_t fIterations;                  ///< number of maximum iteration
   MGParameters fMgParameters;         ///< parameters multi grid
 
@@ -218,8 +218,9 @@ class AliTPCPoissonSolver : public TNamed
   /// \endcond
 
   // \cond CLASSIMP
-  ClassDefOverride(AliTPCPoissonSolver, 1);
+  // ClassDefOverride(AliTPCPoissonSolver<DataT>, 1);
   // \endcond
+  // ClassDefNV(Spline1D<DataT>, 1);
 };
 
 #endif

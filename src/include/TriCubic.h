@@ -53,37 +53,25 @@ class TriCubicInterpolator
   /// derx=1 and dery=2 -> d/dx * d^2/dy^2 * f(x,y,z)
   /// \param safe checks if the given coordinates lie in the grid. if a value is out of the grid, the coordinate will be set to the border of the grid
   /// \return returns the interpolated derivative at given coordinate
-  DataT operator()(const DataT x, const DataT y, const DataT z, const int derx, const int dery, const int derz, const bool safe) const
+  DataT operator()(const DataT x, const DataT y, const DataT z, const size_t derx, const size_t dery, const size_t derz, const bool safe) const
   {
     const Vector<DataT, FDim> coordinates{{x, y, z}}; // vector holding the coordinates
     const auto relPos = processInp(coordinates, safe);
-    return EvalDerivative(relPos[0], relPos[1], relPos[2], derx, dery, derz);
-  }
-
-  void initInterpolator(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
-  {
-    // calcCoefficientsVc(ix, iy, iz);
-    calcCoefficients(ix, iy, iz);
-
-    // store current cell
-    mInitialized = true;
-    mLastInd[FX] = ix;
-    mLastInd[FY] = iy;
-    mLastInd[FZ] = iz;
+    return evalDerivative(relPos[0], relPos[1], relPos[2], derx, dery, derz);
   }
 
  private:
-  DataT uiPow(const DataT base, unsigned int exp) const
+  DataT uiPow(const DataT base, unsigned int exponent) const
   {
     DataT result = 1;
     // infinite for loop
     for (;;) {
       // check if x is uneven number
-      if (exp & 1) {
+      if (exponent & 1) {
         result *= base;
       }
-      exp >>= 1;
-      if (!exp) {
+      exponent >>= 1;
+      if (!exponent) {
         break;
       }
       base *= base;
@@ -113,14 +101,12 @@ class TriCubicInterpolator
     }
 
     const Vector<DataT, FDim> indexTmp{{static_cast<DataT>(ix), static_cast<DataT>(iy), static_cast<DataT>(iz)}};
-    // const Vector<DataT, FDim> relPos{{posRel[FX] - ix, posRel[FY] - iy, posRel[FZ] - iz}};
     const Vector<DataT, FDim> relPos{posRel - indexTmp};
     return relPos;
   }
 
   void calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
   {
-    Vector<DataT, 64> matrixPar{};
     int deltaX[4]{};
     int deltaY[4]{};
     int deltaZ[4]{};
@@ -130,346 +116,180 @@ class TriCubicInterpolator
     mCircularY ? getDataIndexCircularArray(iy, FY, deltaY) : getDataIndexNonCircularArray(iy, FY, deltaY);
     mCircularZ ? getDataIndexNonCircularArray(iz, FZ, deltaZ) : getDataIndexNonCircularArray(iz, FZ, deltaZ);
 
-    const unsigned int i_x_y_z = mGridData.getDataIndex(ix, iy, iz);
-    const unsigned int i_xp1_y_z = i_x_y_z + deltaX[2];
-    const unsigned int i_x_yp1_z = i_x_y_z + deltaY[2];
-    const unsigned int i_xp1_yp1_z = i_x_y_z + deltaX[2] + deltaY[2];
-    const unsigned int i_x_y_zp1 = i_x_y_z + deltaZ[2];
-    const unsigned int i_xp1_y_zp1 = i_x_y_z + deltaX[2] + deltaZ[2];
-    const unsigned int i_x_yp1_zp1 = i_x_y_z + deltaY[2] + deltaZ[2];
-    const unsigned int i_xp1_yp1_zp1 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[2];
-    matrixPar[0] = mGridData[i_x_y_z];
-    matrixPar[1] = mGridData[i_xp1_y_z];
-    matrixPar[2] = mGridData[i_x_yp1_z];
-    matrixPar[3] = mGridData[i_xp1_yp1_z];
-    matrixPar[4] = mGridData[i_x_y_zp1];
-    matrixPar[5] = mGridData[i_xp1_y_zp1];
-    matrixPar[6] = mGridData[i_x_yp1_zp1];
-    matrixPar[7] = mGridData[i_xp1_yp1_zp1];
+    // indices to datat storage
+    const size_t i_x_y_z = mGridData.getDataIndex(ix, iy, iz);
+    const size_t i_xp1_y_z = i_x_y_z + deltaX[2];
+    const size_t i_x_yp1_z = i_x_y_z + deltaY[2];
+    const size_t i_xp1_yp1_z = i_x_y_z + deltaX[2] + deltaY[2];
+    const size_t i_x_y_zp1 = i_x_y_z + deltaZ[2];
+    const size_t i_xp1_y_zp1 = i_x_y_z + deltaX[2] + deltaZ[2];
+    const size_t i_x_yp1_zp1 = i_x_y_z + deltaY[2] + deltaZ[2];
+    const size_t i_xp1_yp1_zp1 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[2];
 
-    // values of df/dx at each corner.
-    const DataT fac1 = 0.5;
-    const unsigned int i_xp2_y_z = i_x_y_z + deltaX[3];
-    const unsigned int i_xm1_y_z = i_x_y_z + deltaX[1];
-    const unsigned int i_xm1_yp1_z = i_x_y_z + deltaX[1] + deltaY[2];
-    const unsigned int i_xp2_yp1_z = i_x_y_z + deltaX[3] + deltaY[2];
-    const unsigned int i_xm1_y_zp1 = i_x_y_z + deltaX[1] + deltaZ[2];
-    const unsigned int i_xp2_y_zp1 = i_x_y_z + deltaX[3] + deltaZ[2];
-    const unsigned int i_xm1_yp1_zp1 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[2];
-    const unsigned int i_xp2_yp1_zp1 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[2];
+    const size_t i_xp2_y_z = i_x_y_z + deltaX[3];
+    const size_t i_xm1_y_z = i_x_y_z + deltaX[1];
+    const size_t i_xm1_yp1_z = i_x_y_z + deltaX[1] + deltaY[2];
+    const size_t i_xp2_yp1_z = i_x_y_z + deltaX[3] + deltaY[2];
+    const size_t i_xm1_y_zp1 = i_x_y_z + deltaX[1] + deltaZ[2];
+    const size_t i_xp2_y_zp1 = i_x_y_z + deltaX[3] + deltaZ[2];
+    const size_t i_xm1_yp1_zp1 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[2];
+    const size_t i_xp2_yp1_zp1 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[2];
+
+    const size_t i_x_ym1_z = i_x_y_z + deltaY[1];
+    const size_t i_xp1_ym1_z = i_x_y_z + deltaX[2] + deltaY[1];
+    const size_t i_x_yp2_z = i_x_y_z + deltaY[3];
+    const size_t i_xp1_yp2_z = i_x_y_z + deltaX[2] + deltaY[3];
+    const size_t i_x_ym1_zp1 = i_x_y_z + deltaY[1] + deltaZ[2];
+    const size_t i_xp1_ym1_zp1 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[2];
+    const size_t i_x_yp2_zp1 = i_x_y_z + deltaY[3] + deltaZ[2];
+    const size_t i_xp1_yp2_zp1 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[2];
+
+    const size_t i_x_y_zm1 = i_x_y_z + deltaZ[1];
+    const size_t i_xp1_y_zm1 = i_x_y_z + deltaX[2] + deltaZ[1];
+    const size_t i_x_yp1_zm1 = i_x_y_z + deltaY[2] + deltaZ[1];
+    const size_t i_xp1_yp1_zm1 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[1];
+    const size_t i_x_y_zp2 = i_x_y_z + deltaZ[3];
+    const size_t i_xp1_y_zp2 = i_x_y_z + deltaX[2] + deltaZ[3];
+    const size_t i_x_yp1_zp2 = i_x_y_z + deltaY[2] + deltaZ[3];
+    const size_t i_xp1_yp1_zp2 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[3];
+
+    const size_t i_xm1_ym1_z = i_x_y_z + deltaX[1] + deltaY[1];
+    const size_t i_xp2_ym1_z = i_x_y_z + deltaX[3] + deltaY[1];
+    const size_t i_xm1_yp2_z = i_x_y_z + deltaX[1] + deltaY[3];
+    const size_t i_xp2_yp2_z = i_x_y_z + deltaX[3] + deltaY[3];
+    const size_t i_xm1_ym1_zp1 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[2];
+    const size_t i_xp2_ym1_zp1 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[2];
+    const size_t i_xm1_yp2_zp1 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[2];
+    const size_t i_xp2_yp2_zp1 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[2];
+
+    const size_t i_xm1_y_zm1 = i_x_y_z + deltaX[1] + deltaZ[1];
+    const size_t i_xp2_y_zm1 = i_x_y_z + deltaX[3] + deltaZ[1];
+    const size_t i_xm1_yp1_zm1 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[1];
+    const size_t i_xp2_yp1_zm1 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[1];
+    const size_t i_xm1_y_zp2 = i_x_y_z + deltaX[1] + deltaZ[3];
+    const size_t i_xp2_y_zp2 = i_x_y_z + deltaX[3] + deltaZ[3];
+    const size_t i_xm1_yp1_zp2 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[3];
+    const size_t i_xp2_yp1_zp2 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[3];
+
+    const size_t i_x_ym1_zm1 = i_x_y_z + deltaY[1] + deltaZ[1];
+    const size_t i_xp1_ym1_zm1 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[1];
+    const size_t i_x_yp2_zm1 = i_x_y_z + deltaY[3] + deltaZ[1];
+    const size_t i_xp1_yp2_zm1 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[1];
+    const size_t i_x_ym1_zp2 = i_x_y_z + deltaY[1] + deltaZ[3];
+    const size_t i_xp1_ym1_zp2 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[3];
+    const size_t i_x_yp2_zp2 = i_x_y_z + deltaY[3] + deltaZ[3];
+    const size_t i_xp1_yp2_zp2 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[3];
+
+    const size_t i_xm1_ym1_zm1 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[1];
+    const size_t i_xp2_ym1_zm1 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[1];
+    const size_t i_xm1_yp2_zm1 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[1];
+    const size_t i_xp2_yp2_zm1 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[1];
+    const size_t i_xm1_ym1_zp2 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[3];
+    const size_t i_xp2_ym1_zp2 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[3];
+    const size_t i_xm1_yp2_zp2 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[3];
+    const size_t i_xp2_yp2_zp2 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[3];
 
     // load values to tmp Vc
-    Vector<DataT, 24> vecDeriv1A{};
-    Vector<DataT, 24> vecDeriv1B{};
-    vecDeriv1A[0] = mGridData[i_xp1_y_z];
-    vecDeriv1B[0] = mGridData[i_xm1_y_z];
-    vecDeriv1A[1] = mGridData[i_xp2_y_z];
-    vecDeriv1B[1] = mGridData[i_x_y_z];
-    vecDeriv1A[2] = mGridData[i_xp1_yp1_z];
-    vecDeriv1B[2] = mGridData[i_xm1_yp1_z];
-    vecDeriv1A[3] = mGridData[i_xp2_yp1_z];
-    vecDeriv1B[3] = mGridData[i_x_yp1_z];
-    vecDeriv1A[4] = mGridData[i_xp1_y_zp1];
-    vecDeriv1B[4] = mGridData[i_xm1_y_zp1];
-    vecDeriv1A[5] = mGridData[i_xp2_y_zp1];
-    vecDeriv1B[5] = mGridData[i_x_y_zp1];
-    vecDeriv1A[6] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv1B[6] = mGridData[i_xm1_yp1_zp1];
-    vecDeriv1A[7] = mGridData[i_xp2_yp1_zp1];
-    vecDeriv1B[7] = mGridData[i_x_yp1_zp1];
+    const Vector<DataT, 24> vecDeriv1A{ {
+      mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1],
+      mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1],
+      mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2]
+    }};
 
-    // values of df/dy at each corner.
-    const unsigned int i_x_ym1_z = i_x_y_z + deltaY[1];
-    const unsigned int i_xp1_ym1_z = i_x_y_z + deltaX[2] + deltaY[1];
-    const unsigned int i_x_yp2_z = i_x_y_z + deltaY[3];
-    const unsigned int i_xp1_yp2_z = i_x_y_z + deltaX[2] + deltaY[3];
-    const unsigned int i_x_ym1_zp1 = i_x_y_z + deltaY[1] + deltaZ[2];
-    const unsigned int i_xp1_ym1_zp1 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[2];
-    const unsigned int i_x_yp2_zp1 = i_x_y_z + deltaY[3] + deltaZ[2];
-    const unsigned int i_xp1_yp2_zp1 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[2];
-    vecDeriv1A[8] = mGridData[i_x_yp1_z];
-    vecDeriv1B[8] = mGridData[i_x_ym1_z];
-    vecDeriv1A[9] = mGridData[i_xp1_yp1_z];
-    vecDeriv1B[9] = mGridData[i_xp1_ym1_z];
-    vecDeriv1A[10] = mGridData[i_x_yp2_z];
-    vecDeriv1B[10] = mGridData[i_x_y_z];
-    vecDeriv1A[11] = mGridData[i_xp1_yp2_z];
-    vecDeriv1B[11] = mGridData[i_xp1_y_z];
-    vecDeriv1A[12] = mGridData[i_x_yp1_zp1];
-    vecDeriv1B[12] = mGridData[i_x_ym1_zp1];
-    vecDeriv1A[13] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv1B[13] = mGridData[i_xp1_ym1_zp1];
-    vecDeriv1A[14] = mGridData[i_x_yp2_zp1];
-    vecDeriv1B[14] = mGridData[i_x_y_zp1];
-    vecDeriv1A[15] = mGridData[i_xp1_yp2_zp1];
-    vecDeriv1B[15] = mGridData[i_xp1_y_zp1];
+    const Vector<DataT, 24> vecDeriv1B{ {
+      mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1],
+      mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1],  mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1],
+      mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z]
+    }};
 
-    // values of df/dz at each corner.
-    const unsigned int i_x_y_zm1 = i_x_y_z + deltaZ[1];
-    const unsigned int i_xp1_y_zm1 = i_x_y_z + deltaX[2] + deltaZ[1];
-    const unsigned int i_x_yp1_zm1 = i_x_y_z + deltaY[2] + deltaZ[1];
-    const unsigned int i_xp1_yp1_zm1 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[1];
-    const unsigned int i_x_y_zp2 = i_x_y_z + deltaZ[3];
-    const unsigned int i_xp1_y_zp2 = i_x_y_z + deltaX[2] + deltaZ[3];
-    const unsigned int i_x_yp1_zp2 = i_x_y_z + deltaY[2] + deltaZ[3];
-    const unsigned int i_xp1_yp1_zp2 = i_x_y_z + deltaX[2] + deltaY[2] + deltaZ[3];
-    vecDeriv1A[16] = mGridData[i_x_y_zp1];
-    vecDeriv1B[16] = mGridData[i_x_y_zm1];
-    vecDeriv1A[17] = mGridData[i_xp1_y_zp1];
-    vecDeriv1B[17] = mGridData[i_xp1_y_zm1];
-    vecDeriv1A[18] = mGridData[i_x_yp1_zp1];
-    vecDeriv1B[18] = mGridData[i_x_yp1_zm1];
-    vecDeriv1A[19] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv1B[19] = mGridData[i_xp1_yp1_zm1];
-    vecDeriv1A[20] = mGridData[i_x_y_zp2];
-    vecDeriv1B[20] = mGridData[i_x_y_z];
-    vecDeriv1A[21] = mGridData[i_xp1_y_zp2];
-    vecDeriv1B[21] = mGridData[i_xp1_y_z];
-    vecDeriv1A[22] = mGridData[i_x_yp1_zp2];
-    vecDeriv1B[22] = mGridData[i_x_yp1_z];
-    vecDeriv1A[23] = mGridData[i_xp1_yp1_zp2];
-    vecDeriv1B[23] = mGridData[i_xp1_yp1_z];
+    const Vector<DataT, 24> vecDeriv2A{{
+      mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1],
+      mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2],
+      mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_x_yp1_zp2], mGridData[i_xp1_yp1_zp2], mGridData[i_x_yp2_zp2], mGridData[i_xp1_yp2_zp2]
+    }};
 
-    Vector<DataT, 24> vecDeriv2A{};
-    Vector<DataT, 24> vecDeriv2B{};
-    Vector<DataT, 24> vecDeriv2C{};
-    Vector<DataT, 24> vecDeriv2D{};
+    const Vector<DataT, 24> vecDeriv2B{{
+      mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1],
+      mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2],
+      mGridData[i_x_ym1_zp1], mGridData[i_xp1_ym1_zp1], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_ym1_zp2], mGridData[i_xp1_ym1_zp2], mGridData[i_x_y_zp2], mGridData[i_xp1_y_zp2]
+    }};
 
-    // values of d2f/dxdy at each corner.
-    const DataT fac2 = 0.25;
-    const unsigned int i_xm1_ym1_z = i_x_y_z + deltaX[1] + deltaY[1];
-    const unsigned int i_xp2_ym1_z = i_x_y_z + deltaX[3] + deltaY[1];
-    const unsigned int i_xm1_yp2_z = i_x_y_z + deltaX[1] + deltaY[3];
-    const unsigned int i_xp2_yp2_z = i_x_y_z + deltaX[3] + deltaY[3];
-    const unsigned int i_xm1_ym1_zp1 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[2];
-    const unsigned int i_xp2_ym1_zp1 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[2];
-    const unsigned int i_xm1_yp2_zp1 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[2];
-    const unsigned int i_xp2_yp2_zp1 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[2];
-    vecDeriv2A[0] = mGridData[i_xp1_yp1_z];
-    vecDeriv2B[0] = mGridData[i_xm1_yp1_z];
-    vecDeriv2C[0] = mGridData[i_xp1_ym1_z];
-    vecDeriv2D[0] = mGridData[i_xm1_ym1_z];
-    vecDeriv2A[1] = mGridData[i_xp2_yp1_z];
-    vecDeriv2B[1] = mGridData[i_x_yp1_z];
-    vecDeriv2C[1] = mGridData[i_xp2_ym1_z];
-    vecDeriv2D[1] = mGridData[i_x_ym1_z];
-    vecDeriv2A[2] = mGridData[i_xp1_yp2_z];
-    vecDeriv2B[2] = mGridData[i_xm1_yp2_z];
-    vecDeriv2C[2] = mGridData[i_xp1_y_z];
-    vecDeriv2D[2] = mGridData[i_xm1_y_z];
-    vecDeriv2A[3] = mGridData[i_xp2_yp2_z];
-    vecDeriv2B[3] = mGridData[i_x_yp2_z];
-    vecDeriv2C[3] = mGridData[i_xp2_y_z];
-    vecDeriv2D[3] = mGridData[i_x_y_z];
-    vecDeriv2A[4] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv2B[4] = mGridData[i_xm1_yp1_zp1];
-    vecDeriv2C[4] = mGridData[i_xp1_ym1_zp1];
-    vecDeriv2D[4] = mGridData[i_xm1_ym1_zp1];
-    vecDeriv2A[5] = mGridData[i_xp2_yp1_zp1];
-    vecDeriv2B[5] = mGridData[i_x_yp1_zp1];
-    vecDeriv2C[5] = mGridData[i_xp2_ym1_zp1];
-    vecDeriv2D[5] = mGridData[i_x_ym1_zp1];
-    vecDeriv2A[6] = mGridData[i_xp1_yp2_zp1];
-    vecDeriv2B[6] = mGridData[i_xm1_yp2_zp1];
-    vecDeriv2C[6] = mGridData[i_xp1_y_zp1];
-    vecDeriv2D[6] = mGridData[i_xm1_y_zp1];
-    vecDeriv2A[7] = mGridData[i_xp2_yp2_zp1];
-    vecDeriv2B[7] = mGridData[i_x_yp2_zp1];
-    vecDeriv2C[7] = mGridData[i_xp2_y_zp1];
-    vecDeriv2D[7] = mGridData[i_x_y_zp1];
+    const Vector<DataT, 24> vecDeriv2C{{
+      mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1],
+      mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z],
+      mGridData[i_x_yp1_zm1], mGridData[i_xp1_yp1_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_yp2_z], mGridData[i_xp1_yp2_z]
+    }};
 
-    // values of d2f/dxdz at each corner.
-    const unsigned int i_xm1_y_zm1 = i_x_y_z + deltaX[1] + deltaZ[1];
-    const unsigned int i_xp2_y_zm1 = i_x_y_z + deltaX[3] + deltaZ[1];
-    const unsigned int i_xm1_yp1_zm1 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[1];
-    const unsigned int i_xp2_yp1_zm1 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[1];
-    const unsigned int i_xm1_y_zp2 = i_x_y_z + deltaX[1] + deltaZ[3];
-    const unsigned int i_xp2_y_zp2 = i_x_y_z + deltaX[3] + deltaZ[3];
-    const unsigned int i_xm1_yp1_zp2 = i_x_y_z + deltaX[1] + deltaY[2] + deltaZ[3];
-    const unsigned int i_xp2_yp1_zp2 = i_x_y_z + deltaX[3] + deltaY[2] + deltaZ[3];
+    const Vector<DataT, 24> vecDeriv2D{{
+      mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1],
+      mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_y_z], mGridData[i_x_y_z], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z],
+      mGridData[i_x_ym1_zm1], mGridData[i_xp1_ym1_zm1], mGridData[i_x_y_zm1], mGridData[i_xp1_y_zm1], mGridData[i_x_ym1_z], mGridData[i_xp1_ym1_z], mGridData[i_x_y_z], mGridData[i_xp1_y_z]
+    }};
 
-    vecDeriv2A[8] = mGridData[i_xp1_y_zp1];
-    vecDeriv2B[8] = mGridData[i_xm1_y_zp1];
-    vecDeriv2C[8] = mGridData[i_xp1_y_zm1];
-    vecDeriv2D[8] = mGridData[i_xm1_y_zm1];
-    vecDeriv2A[9] = mGridData[i_xp2_y_zp1];
-    vecDeriv2B[9] = mGridData[i_x_y_zp1];
-    vecDeriv2C[9] = mGridData[i_xp2_y_zm1];
-    vecDeriv2D[9] = mGridData[i_x_y_zm1];
-    vecDeriv2A[10] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv2B[10] = mGridData[i_xm1_yp1_zp1];
-    vecDeriv2C[10] = mGridData[i_xp1_yp1_zm1];
-    vecDeriv2D[10] = mGridData[i_xm1_yp1_zm1];
-    vecDeriv2A[11] = mGridData[i_xp2_yp1_zp1];
-    vecDeriv2B[11] = mGridData[i_x_yp1_zp1];
-    vecDeriv2C[11] = mGridData[i_xp2_yp1_zm1];
-    vecDeriv2D[11] = mGridData[i_x_yp1_zm1];
-    vecDeriv2A[12] = mGridData[i_xp1_y_zp2];
-    vecDeriv2B[12] = mGridData[i_xm1_y_zp2];
-    vecDeriv2C[12] = mGridData[i_xp1_y_z];
-    vecDeriv2D[12] = mGridData[i_xm1_y_z];
-    vecDeriv2A[13] = mGridData[i_xp2_y_zp2];
-    vecDeriv2B[13] = mGridData[i_x_y_zp2];
-    vecDeriv2C[13] = mGridData[i_xp2_y_z];
-    vecDeriv2D[13] = mGridData[i_x_y_z];
-    vecDeriv2A[14] = mGridData[i_xp1_yp1_zp2];
-    vecDeriv2B[14] = mGridData[i_xm1_yp1_zp2];
-    vecDeriv2C[14] = mGridData[i_xp1_yp1_z];
-    vecDeriv2D[14] = mGridData[i_xm1_yp1_z];
-    vecDeriv2A[15] = mGridData[i_xp2_yp1_zp2];
-    vecDeriv2B[15] = mGridData[i_x_yp1_zp2];
-    vecDeriv2C[15] = mGridData[i_xp2_yp1_z];
-    vecDeriv2D[15] = mGridData[i_x_yp1_z];
+    const Vector<DataT, 8> vecDeriv3A{{
+      mGridData[i_xp1_yp1_zp1], mGridData[i_xp2_yp1_zp1], mGridData[i_xp1_yp2_zp1], mGridData[i_xp2_yp2_zp1], mGridData[i_xp1_yp1_zp2], mGridData[i_xp2_yp1_zp2], mGridData[i_xp1_yp2_zp2], mGridData[i_xp2_yp2_zp2]
+    }};
 
-    // values of d2f/dydz at each corner.
-    const unsigned int i_x_ym1_zm1 = i_x_y_z + deltaY[1] + deltaZ[1];
-    const unsigned int i_xp1_ym1_zm1 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[1];
-    const unsigned int i_x_yp2_zm1 = i_x_y_z + deltaY[3] + deltaZ[1];
-    const unsigned int i_xp1_yp2_zm1 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[1];
-    const unsigned int i_x_ym1_zp2 = i_x_y_z + deltaY[1] + deltaZ[3];
-    const unsigned int i_xp1_ym1_zp2 = i_x_y_z + deltaX[2] + deltaY[1] + deltaZ[3];
-    const unsigned int i_x_yp2_zp2 = i_x_y_z + deltaY[3] + deltaZ[3];
-    const unsigned int i_xp1_yp2_zp2 = i_x_y_z + deltaX[2] + deltaY[3] + deltaZ[3];
+    const Vector<DataT, 8> vecDeriv3B{{
+      mGridData[i_xm1_yp1_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xm1_yp2_zp1], mGridData[i_x_yp2_zp1], mGridData[i_xm1_yp1_zp2], mGridData[i_x_yp1_zp2], mGridData[i_xm1_yp2_zp2], mGridData[i_x_yp2_zp2]
+    }};
 
-    vecDeriv2A[16] = mGridData[i_x_yp1_zp1];
-    vecDeriv2B[16] = mGridData[i_x_ym1_zp1];
-    vecDeriv2C[16] = mGridData[i_x_yp1_zm1];
-    vecDeriv2D[16] = mGridData[i_x_ym1_zm1];
-    vecDeriv2A[17] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv2B[17] = mGridData[i_xp1_ym1_zp1];
-    vecDeriv2C[17] = mGridData[i_xp1_yp1_zm1];
-    vecDeriv2D[17] = mGridData[i_xp1_ym1_zm1];
-    vecDeriv2A[18] = mGridData[i_x_yp2_zp1];
-    vecDeriv2B[18] = mGridData[i_x_y_zp1];
-    vecDeriv2C[18] = mGridData[i_x_yp2_zm1];
-    vecDeriv2D[18] = mGridData[i_x_y_zm1];
-    vecDeriv2A[19] = mGridData[i_xp1_yp2_zp1];
-    vecDeriv2B[19] = mGridData[i_xp1_y_zp1];
-    vecDeriv2C[19] = mGridData[i_xp1_yp2_zm1];
-    vecDeriv2D[19] = mGridData[i_xp1_y_zm1];
-    vecDeriv2A[20] = mGridData[i_x_yp1_zp2];
-    vecDeriv2B[20] = mGridData[i_x_ym1_zp2];
-    vecDeriv2C[20] = mGridData[i_x_yp1_z];
-    vecDeriv2D[20] = mGridData[i_x_ym1_z];
-    vecDeriv2A[21] = mGridData[i_xp1_yp1_zp2];
-    vecDeriv2B[21] = mGridData[i_xp1_ym1_zp2];
-    vecDeriv2C[21] = mGridData[i_xp1_yp1_z];
-    vecDeriv2D[21] = mGridData[i_xp1_ym1_z];
-    vecDeriv2A[22] = mGridData[i_x_yp2_zp2];
-    vecDeriv2B[22] = mGridData[i_x_y_zp2];
-    vecDeriv2C[22] = mGridData[i_x_yp2_z];
-    vecDeriv2D[22] = mGridData[i_x_y_z];
+    const Vector<DataT, 8> vecDeriv3C{{
+      mGridData[i_xp1_ym1_zp1], mGridData[i_xp2_ym1_zp1], mGridData[i_xp1_y_zp1], mGridData[i_xp2_y_zp1], mGridData[i_xp1_ym1_zp2], mGridData[i_xp2_ym1_zp2], mGridData[i_xp1_y_zp2], mGridData[i_xp2_y_zp2]
+    }};
 
-    // values of d3f/dxdydz at each corner.
-    const float fac3 = 0.125;
-    Vector<DataT, 8> vecDeriv3A{};
-    Vector<DataT, 8> vecDeriv3B{};
-    Vector<DataT, 8> vecDeriv3C{};
-    Vector<DataT, 8> vecDeriv3D{};
-    Vector<DataT, 8> vecDeriv3E{};
-    Vector<DataT, 8> vecDeriv3F{};
-    Vector<DataT, 8> vecDeriv3G{};
-    Vector<DataT, 8> vecDeriv3H{};
+    const Vector<DataT, 8> vecDeriv3D{{
+      mGridData[i_xm1_ym1_zp1], mGridData[i_x_ym1_zp1], mGridData[i_xm1_y_zp1], mGridData[i_x_y_zp1], mGridData[i_xm1_ym1_zp2], mGridData[i_x_ym1_zp2], mGridData[i_xm1_y_zp2], mGridData[i_x_y_zp2]
+    }};
 
-    const unsigned int i_xm1_ym1_zm1 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[1];
-    const unsigned int i_xp2_ym1_zm1 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[1];
-    const unsigned int i_xm1_yp2_zm1 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[1];
-    const unsigned int i_xp2_yp2_zm1 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[1];
-    const unsigned int i_xm1_ym1_zp2 = i_x_y_z + deltaX[1] + deltaY[1] + deltaZ[3];
-    const unsigned int i_xp2_ym1_zp2 = i_x_y_z + deltaX[3] + deltaY[1] + deltaZ[3];
-    const unsigned int i_xm1_yp2_zp2 = i_x_y_z + deltaX[1] + deltaY[3] + deltaZ[3];
-    const unsigned int i_xp2_yp2_zp2 = i_x_y_z + deltaX[3] + deltaY[3] + deltaZ[3];
-    vecDeriv3A[0] = mGridData[i_xp1_yp1_zp1];
-    vecDeriv3B[0] = mGridData[i_xm1_yp1_zp1];
-    vecDeriv3C[0] = mGridData[i_xp1_ym1_zp1];
-    vecDeriv3D[0] = mGridData[i_xm1_ym1_zp1];
-    vecDeriv3E[0] = mGridData[i_xp1_yp1_zm1];
-    vecDeriv3F[0] = mGridData[i_xm1_yp1_zm1];
-    vecDeriv3G[0] = mGridData[i_xp1_ym1_zm1];
-    vecDeriv3H[0] = mGridData[i_xm1_ym1_zm1];
-    vecDeriv3A[1] = mGridData[i_xp2_yp1_zp1];
-    vecDeriv3B[1] = mGridData[i_x_yp1_zp1];
-    vecDeriv3C[1] = mGridData[i_xp2_ym1_zp1];
-    vecDeriv3D[1] = mGridData[i_x_ym1_zp1];
-    vecDeriv3E[1] = mGridData[i_xp2_yp1_zm1];
-    vecDeriv3F[1] = mGridData[i_x_yp1_zm1];
-    vecDeriv3G[1] = mGridData[i_xp2_ym1_zm1];
-    vecDeriv3H[1] = mGridData[i_x_ym1_zm1];
-    vecDeriv3A[2] = mGridData[i_xp1_yp2_zp1];
-    vecDeriv3B[2] = mGridData[i_xm1_yp2_zp1];
-    vecDeriv3C[2] = mGridData[i_xp1_y_zp1];
-    vecDeriv3D[2] = mGridData[i_xm1_y_zp1];
-    vecDeriv3E[2] = mGridData[i_xp1_yp2_zm1];
-    vecDeriv3F[2] = mGridData[i_xm1_yp2_zm1];
-    vecDeriv3G[2] = mGridData[i_xp1_y_zm1];
-    vecDeriv3H[2] = mGridData[i_xm1_y_zm1];
-    vecDeriv3A[3] = mGridData[i_xp2_yp2_zp1];
-    vecDeriv3B[3] = mGridData[i_x_yp2_zp1];
-    vecDeriv3C[3] = mGridData[i_xp2_y_zp1];
-    vecDeriv3D[3] = mGridData[i_x_y_zp1];
-    vecDeriv3E[3] = mGridData[i_xp2_yp2_zm1];
-    vecDeriv3F[3] = mGridData[i_x_yp2_zm1];
-    vecDeriv3G[3] = mGridData[i_xp2_y_zm1];
-    vecDeriv3H[3] = mGridData[i_x_y_zm1];
-    vecDeriv3A[4] = mGridData[i_xp1_yp1_zp2];
-    vecDeriv3B[4] = mGridData[i_xm1_yp1_zp2];
-    vecDeriv3C[4] = mGridData[i_xp1_ym1_zp2];
-    vecDeriv3D[4] = mGridData[i_xm1_ym1_zp2];
-    vecDeriv3E[4] = mGridData[i_xp1_yp1_z];
-    vecDeriv3F[4] = mGridData[i_xm1_yp1_z];
-    vecDeriv3G[4] = mGridData[i_xp1_ym1_z];
-    vecDeriv3H[4] = mGridData[i_xm1_ym1_z];
-    vecDeriv3A[5] = mGridData[i_xp2_yp1_zp2];
-    vecDeriv3B[5] = mGridData[i_x_yp1_zp2];
-    vecDeriv3C[5] = mGridData[i_xp2_ym1_zp2];
-    vecDeriv3D[5] = mGridData[i_x_ym1_zp2];
-    vecDeriv3E[5] = mGridData[i_xp2_yp1_z];
-    vecDeriv3F[5] = mGridData[i_x_yp1_z];
-    vecDeriv3G[5] = mGridData[i_xp2_ym1_z];
-    vecDeriv3H[5] = mGridData[i_x_ym1_z];
-    vecDeriv3A[6] = mGridData[i_xp1_yp2_zp2];
-    vecDeriv3B[6] = mGridData[i_xm1_yp2_zp2];
-    vecDeriv3C[6] = mGridData[i_xp1_y_zp2];
-    vecDeriv3D[6] = mGridData[i_xm1_y_zp2];
-    vecDeriv3E[6] = mGridData[i_xp1_yp2_z];
-    vecDeriv3F[6] = mGridData[i_xm1_yp2_z];
-    vecDeriv3G[6] = mGridData[i_xp1_y_z];
-    vecDeriv3H[6] = mGridData[i_xm1_y_z];
-    vecDeriv3A[7] = mGridData[i_xp2_yp2_zp2];
-    vecDeriv3B[7] = mGridData[i_x_yp2_zp2];
-    vecDeriv3C[7] = mGridData[i_xp2_y_zp2];
-    vecDeriv3D[7] = mGridData[i_x_y_zp2];
-    vecDeriv3E[7] = mGridData[i_xp2_yp2_z];
-    vecDeriv3F[7] = mGridData[i_x_yp2_z];
-    vecDeriv3G[7] = mGridData[i_xp2_y_z];
-    vecDeriv3H[7] = mGridData[i_x_y_z];
+    const Vector<DataT, 8> vecDeriv3E{{
+      mGridData[i_xp1_yp1_zm1], mGridData[i_xp2_yp1_zm1], mGridData[i_xp1_yp2_zm1], mGridData[i_xp2_yp2_zm1], mGridData[i_xp1_yp1_z], mGridData[i_xp2_yp1_z], mGridData[i_xp1_yp2_z], mGridData[i_xp2_yp2_z]
+    }};
 
+    const Vector<DataT, 8> vecDeriv3F{{
+      mGridData[i_xm1_yp1_zm1], mGridData[i_x_yp1_zm1], mGridData[i_xm1_yp2_zm1], mGridData[i_x_yp2_zm1], mGridData[i_xm1_yp1_z], mGridData[i_x_yp1_z], mGridData[i_xm1_yp2_z], mGridData[i_x_yp2_z]
+    }};
+
+    const Vector<DataT, 8> vecDeriv3G{{
+      mGridData[i_xp1_ym1_zm1], mGridData[i_xp2_ym1_zm1], mGridData[i_xp1_y_zm1], mGridData[i_xp2_y_zm1], mGridData[i_xp1_ym1_z], mGridData[i_xp2_ym1_z], mGridData[i_xp1_y_z], mGridData[i_xp2_y_z]
+    }};
+
+    const Vector<DataT, 8> vecDeriv3H{{
+      mGridData[i_xm1_ym1_zm1], mGridData[i_x_ym1_zm1], mGridData[i_xm1_y_zm1], mGridData[i_x_y_zm1], mGridData[i_xm1_ym1_z], mGridData[i_x_ym1_z], mGridData[i_xm1_y_z], mGridData[i_x_y_z]
+    }};
+
+    const DataT fac1{0.5};
     const Vector<DataT, 24> vfac1{
       {fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
        fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
-       fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
        fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1}};
 
+    const DataT fac2{0.25};
     const Vector<DataT, 24> vfac2{
       {fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
        fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
        fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2}};
 
+    const DataT fac3{0.125};
     const Vector<DataT, 8> vfac3{{fac3, fac3, fac3, fac3, fac3, fac3, fac3, fac3}};
 
     const Vector<DataT, 24> vecDeriv1Res{vfac1 * (vecDeriv1A - vecDeriv1B)};
     const Vector<DataT, 24> vecDeriv2Res{vfac2 * (vecDeriv2A - vecDeriv2B - vecDeriv2C + vecDeriv2D)};
     const Vector<DataT, 8> vecDeriv3Res{vfac3 * (vecDeriv3A - vecDeriv3B - vecDeriv3C + vecDeriv3D - vecDeriv3E + vecDeriv3F + vecDeriv3G - vecDeriv3H)};
 
-    for (size_t i = 0; i < vecDeriv1Res.GetentriesCount(); ++i) {
-      matrixPar[8 + i] = vecDeriv1Res[i];
-      matrixPar[32 + i] = vecDeriv2Res[i];
-    }
-    for (size_t i = 0; i < vecDeriv3Res.GetentriesCount(); ++i) {
-      matrixPar[56 + i] = vecDeriv3Res[i];
-    }
+    const Vector<DataT, 64> matrixPar{{
+      mGridData[i_x_y_z], mGridData[i_xp1_y_z], mGridData[i_x_yp1_z], mGridData[i_xp1_yp1_z], mGridData[i_x_y_zp1], mGridData[i_xp1_y_zp1], mGridData[i_x_yp1_zp1], mGridData[i_xp1_yp1_zp1],
+      vecDeriv1Res[0], vecDeriv1Res[1], vecDeriv1Res[2], vecDeriv1Res[3], vecDeriv1Res[4], vecDeriv1Res[5], vecDeriv1Res[6], vecDeriv1Res[7], vecDeriv1Res[8], vecDeriv1Res[9], vecDeriv1Res[10],
+      vecDeriv1Res[11], vecDeriv1Res[12], vecDeriv1Res[13], vecDeriv1Res[14], vecDeriv1Res[15], vecDeriv1Res[16], vecDeriv1Res[17], vecDeriv1Res[18], vecDeriv1Res[19], vecDeriv1Res[20], vecDeriv1Res[21],
+      vecDeriv1Res[22], vecDeriv1Res[23], vecDeriv2Res[0], vecDeriv2Res[1], vecDeriv2Res[2], vecDeriv2Res[3], vecDeriv2Res[4], vecDeriv2Res[5], vecDeriv2Res[6], vecDeriv2Res[7], vecDeriv2Res[8], vecDeriv2Res[9],
+      vecDeriv2Res[10], vecDeriv2Res[11], vecDeriv2Res[12], vecDeriv2Res[13], vecDeriv2Res[14], vecDeriv2Res[15], vecDeriv2Res[16], vecDeriv2Res[17], vecDeriv2Res[18], vecDeriv2Res[19], vecDeriv2Res[20],
+      vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]
+    }};
+
+    // calc coeffiecients
     mCoefficients = mMatrixA * matrixPar;
   }
+
 
   DataT interpolate(const Vector<DataT, 3>& pos) const
   {
@@ -539,17 +359,17 @@ class TriCubicInterpolator
     return result;
   }
 
-  DataT EvalDerivative(const DataT dx, const DataT dy, const DataT dz, const int derx, const int dery, const int derz) const
+  DataT evalDerivative(const DataT dx, const DataT dy, const DataT dz, const size_t derx, const size_t dery, const size_t derz) const
   {
 
     DataT ret{};
     DataT cont{};
 
-    for (int i = derx; i < 4; i++) {
-      for (int j = dery; j < 4; j++) {
-        for (int k = derz; k < 4; k++) {
+    for (size_t i = derx; i < 4; i++) {
+      for (size_t j = dery; j < 4; j++) {
+        for (size_t k = derz; k < 4; k++) {
 
-          const unsigned int index = i + j * 4 + 16 * k;
+          const size_t index = i + j * 4 + 16 * k;
           cont = mCoefficients[index] * uiPow(dx, i - derx) * uiPow(dy, j - dery) * uiPow(dz, k - derz);
           for (int w = 0; w < derx; w++) {
             cont *= (i - w);
@@ -602,6 +422,17 @@ class TriCubicInterpolator
   {
     const int regulatedDelta = mGridData.isIndexInGrid(index0 + delta, dim) ? delta : offs;
     return regulatedDelta;
+  }
+
+  void initInterpolator(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
+  {
+    calcCoefficients(ix, iy, iz);
+
+    // store current cell
+    mInitialized = true;
+    mLastInd[FX] = ix;
+    mLastInd[FY] = iy;
+    mLastInd[FZ] = iz;
   }
 
   // matrix needed to compute the coefficients
@@ -679,16 +510,13 @@ class TriCubicInterpolator
   static constexpr unsigned int FY = Grid3D::getFY();    // index for y coordinate
   static constexpr unsigned int FZ = Grid3D::getFZ();    // index for z coordinate
 
-  // const unsigned int mNgrid[FDim]{ Grid3D::getN(FX), Grid3D::getN(FY), Grid3D::getN(FZ) }; // number of grid points in direction
-  const unsigned int mNgrid[FDim]{Grid3D::getN(FX), Grid3D::getN(FY), Grid3D::getN(FZ)}; // number of grid points in direction
-
   const Grid3D& mGridData{}; // adress to the data container of the grid
 
   mutable bool mInitialized = false;             ///< sets the flag if the coefficients are evaluated at least once
   mutable Vector<unsigned int, FDim> mLastInd{}; ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for one-the last cell are stored)
-  const bool mCircularX{};
-  const bool mCircularY{};
-  const bool mCircularZ{};
+  const bool mCircularX{}; ///< sets circular padding in x dimension
+  const bool mCircularY{}; ///< sets circular padding in y dimension
+  const bool mCircularZ{}; ///< sets circular padding in z dimension
 };
 
 #endif

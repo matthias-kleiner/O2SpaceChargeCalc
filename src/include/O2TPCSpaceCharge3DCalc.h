@@ -26,7 +26,7 @@
 #endif
 
 template <typename DataT = float>
-struct Formulas {
+struct AnalyticalFields {
 
   DataT parA{1e-5}; ///< parameter [0] of functions
   DataT parB{0.5};  ///< parameter [1] of functions
@@ -36,74 +36,82 @@ struct Formulas {
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Er for given coordinate
-  DataT evalEr(DataT r, DataT phi, DataT z) const
+  DataT evalEr(DataT z, DataT r, DataT phi) const
   {
-    return erFunc(r, phi, z);
+    return erFunc(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Ez for given coordinate
-  DataT evalEz(DataT r, DataT phi, DataT z) const
+  DataT evalEz(DataT z, DataT r, DataT phi) const
   {
-    return ezFunc(r, phi, z);
+    return ezFunc(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Ephi for given coordinate
-  DataT evalEphi(DataT r, DataT phi, DataT z) const
+  DataT evalEphi(DataT z, DataT r, DataT phi) const
   {
-    return ephiFunc(r, phi, z);
+    return ephiFunc(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the potential for given coordinate
-  DataT evalPotential(DataT r, DataT phi, DataT z) const
+  DataT evalPotential(DataT z, DataT r, DataT phi) const
   {
-    return potentialFunc(r, phi, z);
+    return potentialFunc(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the space charge density for given coordinate
-  DataT evalDensity(DataT r, DataT phi, DataT z) const
+  DataT evalDensity(DataT z, DataT r, DataT phi) const
   {
-    return densityFunc(r, phi, z);
+    return densityFunc(z, r, phi);
   }
 
   /// analytical potential
-  std::function<DataT(DataT, DataT, DataT)> potentialFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
+  std::function<DataT(DataT, DataT, DataT)> potentialFunc = [& parA = parA, &parB = parB, &parC = parC](DataT z, DataT r, DataT phi) {
     return -parA * (std::pow((-r + 254.5 + 83.5), 4) - 338.0 * std::pow((-r + 254.5 + 83.5), 3) + 21250.75 * std::pow((-r + 254.5 + 83.5), 2)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125));
   };
 
   /// analytical space charge - NOTE: if the space charge density is calculated analytical there would be a - sign in the formula (-parA)  - however since its an e- the sign is flipped (IS THIS CORRECT??? see for minus sign: AliTPCSpaceCharge3DCalc::SetPotentialBoundaryAndChargeFormula)-
-  std::function<DataT(DataT, DataT, DataT)> densityFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
+  std::function<DataT(DataT, DataT, DataT)> densityFunc = [& parA = parA, &parB = parB, &parC = parC](DataT z, DataT r, DataT phi) {
     return parA * ((1 / r * 16 * (-3311250 + 90995.5 * r - 570.375 * r * r + r * r * r)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125)) +
                     (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * std::pow(-r + 254.5 + 83.5, 2)) / (r * r) * std::exp(-1 * parC * (z - 125) * (z - 125)) * -2 * parB * parB * std::cos(2 * parB * phi) +
                     (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * std::pow(-r + 254.5 + 83.5, 2)) * std::cos(parB * phi) * std::cos(parB * phi) * 2 * parC * std::exp(-1 * parC * (z - 125) * (z - 125)) * (2 * parC * (z - 125) * (z - 125) - 1));
   };
 
   /// analytical electric field Er
-  std::function<DataT(DataT, DataT, DataT)> erFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
+  std::function<DataT(DataT, DataT, DataT)> erFunc = [& parA = parA, &parB = parB, &parC = parC](DataT z, DataT r, DataT phi) {
     return parA * 4 * (r * r * r - 760.5 * r * r + 181991 * r - 1.3245 * std::pow(10, 7)) * std::cos(parB * phi) * std::cos(parB * phi) * std::exp(-1 * parC * (z - 125) * (z - 125));
   };
 
   /// analytical electric field Ephi
-  std::function<DataT(DataT, DataT, DataT)> ephiFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
+  std::function<DataT(DataT, DataT, DataT)> ephiFunc = [& parA = parA, &parB = parB, &parC = parC](DataT z, DataT r, DataT phi) {
     return parA * (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * (-r + 254.5 + 83.5) * (-r + 254.5 + 83.5)) / r * std::exp(-1 * parC * (z - 125) * (z - 125)) * -parB * std::sin(2 * parB * phi);
   };
 
   /// analytical electric field Ez
-  std::function<DataT(DataT, DataT, DataT)> ezFunc = [& parA = parA, &parB = parB, &parC = parC](DataT r, DataT phi, DataT z) {
+  std::function<DataT(DataT, DataT, DataT)> ezFunc = [& parA = parA, &parB = parB, &parC = parC](DataT z, DataT r, DataT phi) {
     return parA * (std::pow(-r + 254.5 + 83.5, 4) - 338.0 * std::pow(-r + 254.5 + 83.5, 3) + 21250.75 * (-r + 254.5 + 83.5) * (-r + 254.5 + 83.5)) * std::cos(parB * phi) * std::cos(parB * phi) * -2 * parC * (z - 125) * std::exp(-1 * parC * (z - 125) * (z - 125));
   };
 };
+
+
+
+template <typename DataT = float>
+struct NumericalFields {
+
+};
+
 
 /// \tparam DataT the type of data which is used during the calculations
 /// \tparam Nr number of vertices in r direction
@@ -118,7 +126,7 @@ class O2TPCSpaceCharge3DCalc
 
   // stepp 0:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step = 0: Fill Boundary and Charge Densities"));
-  void fillBoundaryAndChargeDensities(Formulas<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence);
+  void fillBoundaryAndChargeDensities(AnalyticalFields<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence);
 
   // stepp 1:
   //Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 1: Poisson solver: %f\n", w.CpuTime()));
@@ -131,11 +139,11 @@ class O2TPCSpaceCharge3DCalc
   // stepp 3:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 3: Local distortion and correction cpu time: %f\n", w.CpuTime()));
   /// lcorrections=false -> distortions, lcorrections=true->corrections
-  template <typename ElectricFields = Formulas<DataT>>
+  template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct);
 
   /// calculate distortions or corrections analytical with given funcion
-  void getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, Formulas<DataT>& formulaStruct) const;
+  void getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, AnalyticalFields<DataT>& formulaStruct) const;
 
   //step 4:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
@@ -178,14 +186,45 @@ class O2TPCSpaceCharge3DCalc
     return mLocalCorrdRPhi(iz, ir, iphi);
   }
 
+  DataT getEr(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mElectricFieldEr(iz, ir, iphi);
+  }
+
+  /// return the numerically calculated electric field. To get the analytical field use the struct eval function
+  DataT getEz(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mElectricFieldEz(iz, ir, iphi);
+  }
+
+  DataT getEphi(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mElectricFieldEphi(iz, ir, iphi);
+  }
+
   int getIntegrationSteps() const { return mIntegrationSteps; }
+
+  DataT getPhiVertex(size_t index) const
+  {
+    return mGrid3D.getZVertex(index);
+  }
+
+  DataT getRVertex(size_t index) const
+  {
+    return mGrid3D.getYVertex(index);
+  }
+
+  DataT getZVertex(size_t index) const
+  {
+    return mGrid3D.getXVertex(index);
+  }
 
   void setOmegaTauT1T2(DataT omegaTau, DataT t1, DataT t2)
   {
     const DataT wt0 = t2 * omegaTau;
-    fC0 = 1. / (1. + wt0 * wt0);
+    fC0 = 1 / (1 + wt0 * wt0);
     const DataT wt1 = t1 * omegaTau;
-    fC1 = wt1 / (1. + wt1 * wt1);
+    fC1 = wt1 / (1 + wt1 * wt1);
   };
 
   void setC0C1(DataT c0, DataT c1)
@@ -215,21 +254,6 @@ class O2TPCSpaceCharge3DCalc
 
   DataT fC0 = 0.f; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
   DataT fC1 = 0.f; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
-
-  DataT getPhiVertex(size_t index) const
-  {
-    return mGrid3D.getZVertex(index);
-  }
-
-  DataT getRVertex(size_t index) const
-  {
-    return mGrid3D.getYVertex(index);
-  }
-
-  DataT getZVertex(size_t index) const
-  {
-    return mGrid3D.getXVertex(index);
-  }
 
   DataT getInvSpacingR() const
   {

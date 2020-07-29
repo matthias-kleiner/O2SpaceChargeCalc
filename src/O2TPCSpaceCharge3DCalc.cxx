@@ -6,7 +6,7 @@ templateClassImp(O2TPCSpaceCharge3DCalc);
 // const int nTHREADS = 8;
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, Formulas<DataT>& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, AnalyticalFields<DataT>& formulaStruct) const
 {
   DataT localIntErOverEz = 0;
   DataT localIntEPhiOverEz = 0;
@@ -24,13 +24,13 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const
     TF1 fEz("fEZOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) - ezField); }, p1z, p2z, 1);
     localIntDeltaEz = static_cast<DataT>(fEz.Integral(p1z, p2z));
   } else {
-    const DataT fielder0 = formulaStruct.evalEr(p1r, p1phi, p1z);
-    const DataT fieldez0 = formulaStruct.evalEz(p1r, p1phi, p1z);
-    const DataT fieldephi0 = formulaStruct.evalEphi(p1r, p1phi, p1z);
+    const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
+    const DataT fieldez0 = formulaStruct.evalEz(p1z, p1r, p1phi);
+    const DataT fieldephi0 = formulaStruct.evalEphi(p1z, p1r, p1phi);
 
-    const DataT fielder1 = formulaStruct.evalEr(p1r, p1phi, p2z);
-    const DataT fieldez1 = formulaStruct.evalEz(p1r, p1phi, p2z);
-    const DataT fieldephi1 = formulaStruct.evalEphi(p1r, p1phi, p2z);
+    const DataT fielder1 = formulaStruct.evalEr(p2z, p1r, p1phi);
+    const DataT fieldez1 = formulaStruct.evalEz(p2z, p1r, p1phi);
+    const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p1r, p1phi);
 
     const DataT eZ0 = ezField + fieldez0;
     const DataT eZ1 = ezField + fieldez1;
@@ -46,11 +46,11 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const
       DataT fieldSumEz = 0;
       for (int i = 1; i < nSteps; ++i) {
         const DataT xk1Tmp = p1z + i * deltaX;
-        const DataT ezField1 = formulaStruct.evalEz(p1r, p1phi, xk1Tmp);
+        const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
         const DataT ezField1Denominator = 1 / ezField + ezField1;
 
-        fieldSumEr += formulaStruct.evalEr(p1r, p1phi, xk1Tmp) * ezField1Denominator;
-        fieldSumEphi += formulaStruct.evalEphi(p1r, p1phi, xk1Tmp) * ezField1Denominator;
+        fieldSumEr += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+        fieldSumEphi += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
         fieldSumEz += ezField1;
       }
       localIntErOverEz = deltaX * (fieldSumEr + static_cast<DataT>(0.5) * (fielder0 / eZ0 + fielder1 / eZ1));
@@ -69,25 +69,25 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const
         const DataT xk1Tmp = p1z + i * deltaX;
         const DataT xk2 = xk1Tmp - static_cast<DataT>(0.5) * deltaX;
 
-        const DataT ezField1 = formulaStruct.evalEz(p1r, p1phi, xk1Tmp);
-        const DataT ezField2 = formulaStruct.evalEz(p1r, p1phi, xk2);
+        const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
+        const DataT ezField2 = formulaStruct.evalEz(xk2, p1r, p1phi);
         const DataT ezField1Denominator = 1 / (ezField + ezField1);
         const DataT ezField2Denominator = 1 / (ezField + ezField2);
 
-        fieldSum1ErOverEz += formulaStruct.evalEr(p1r, p1phi, xk1Tmp) * ezField1Denominator;
-        fieldSum2ErOverEz += formulaStruct.evalEr(p1r, p1phi, xk2) * ezField2Denominator;
+        fieldSum1ErOverEz += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+        fieldSum2ErOverEz += formulaStruct.evalEr(xk2, p1r, p1phi) * ezField2Denominator;
 
-        fieldSum1EphiOverEz += formulaStruct.evalEphi(p1r, p1phi, xk1Tmp) * ezField1Denominator;
-        fieldSum2EphiOverEz += formulaStruct.evalEphi(p1r, p1phi, xk2) * ezField2Denominator;
+        fieldSum1EphiOverEz += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+        fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2, p1r, p1phi) * ezField2Denominator;
 
         fieldSum1Ez += ezField1;
         fieldSum2Ez += ezField2;
       }
       const DataT xk2N = (p2z - static_cast<DataT>(0.5) * deltaX);
-      const DataT ezField2 = formulaStruct.evalEz(p1r, p1phi, xk2N);
+      const DataT ezField2 = formulaStruct.evalEz(xk2N, p1r, p1phi);
       const DataT ezField2Denominator = 1 / (ezField + ezField2);
-      fieldSum2ErOverEz += formulaStruct.evalEr(p1r, p1phi, xk2N) * ezField2Denominator;
-      fieldSum2EphiOverEz += formulaStruct.evalEphi(p1r, p1phi, xk2N) * ezField2Denominator;
+      fieldSum2ErOverEz += formulaStruct.evalEr(xk2N, p1r, p1phi) * ezField2Denominator;
+      fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2N, p1r, p1phi) * ezField2Denominator;
       fieldSum2Ez += ezField2;
 
       const DataT deltaXSimpsonSixth = deltaX / 6;
@@ -103,21 +103,21 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities(Formulas<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence)
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities(AnalyticalFields<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence)
 {
   RegularGrid3D<DataT, Nz, Nr, Nphi> gridPotentialTmp{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid3D<DataT, Nz, Nr, Nphi> gridDensityTmp{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
 
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-    const DataT phi0 = getPhiVertex(iPhi);
+    const DataT phi = getPhiVertex(iPhi);
     for (size_t iR = 0; iR < Nr; ++iR) {
-      const DataT radius0 = getRVertex(iR);
+      const DataT radius = getRVertex(iR);
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
-        const DataT z0 = getZVertex(iZ);
-        gridDensityTmp(iZ, iR, iPhi) = formulaStruct.evalDensity(radius0, phi0, z0);
+        const DataT z = getZVertex(iZ);
+        gridDensityTmp(iZ, iR, iPhi) = formulaStruct.evalDensity(z, radius, phi);
 
         if ((iR == 0) || (iR == (Nr - 1)) || (iZ == 0) || (iZ == (Nz - 1))) {
-          gridPotentialTmp(iZ, iR, iPhi) = formulaStruct.evalPotential(radius0, phi0, z0);
+          gridPotentialTmp(iZ, iR, iPhi) = formulaStruct.evalPotential(z, radius, phi);
         }
       }
     }

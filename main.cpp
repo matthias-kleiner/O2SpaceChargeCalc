@@ -1,4 +1,6 @@
 #include "src/include/O2TPCSpaceCharge3DCalc.h"
+// #include "src/CustomStreamer.cxx"
+
 #include <iostream>
 
 // for debugging
@@ -10,9 +12,51 @@ int main()
 {
   using DataT = float;
 
-  const unsigned int nGridR = 129;
-  const unsigned int nGridZ = 129;
-  const unsigned int nGridPhi = 180;
+  const unsigned int nGridR = 17;
+  const unsigned int nGridZ = 17;
+  const unsigned int nGridPhi = 90;
+
+  //====================== dump regular grid to file testing ====================================
+  TFile fOut("grid3D.root", "RECREATE");
+  // using dataContType = DataContainer3D<float,nGridR,nGridZ,nGridPhi>;
+  DataContainer3D<float, nGridR, nGridZ, nGridPhi> containerOut;
+
+  // set dummy values
+  for (size_t i = 0; i < nGridR * nGridZ * nGridPhi; ++i) {
+    containerOut[i] = i;
+  }
+
+  // dump to disc
+  containerOut.writeToFile(fOut, "grid");
+  fOut.Close();
+
+  // create a regular grid with the dumped data
+  TFile fIn("grid3D.root", "READ");
+  RegularGrid3D<float, 17, 17, 90> gridIn{fIn, "grid", 0, 0, 0, 1, 1, 1};
+
+  std::cout << gridIn;
+
+  // modify values in regular grid
+  for (size_t iPhi = 0; iPhi < nGridPhi; ++iPhi) {
+    for (size_t iR = 0; iR < nGridR; ++iR) {
+      for (size_t iZ = 0; iZ < nGridZ; ++iZ) {
+        int ind = iZ + iR*nGridZ + nGridZ*nGridR*iPhi;
+        gridIn(iZ, iR, iPhi) = ind;
+      }
+    }
+  }
+
+  TFile fOut2("grid3D.root", "RECREATE");
+  gridIn.storeValuesToFile(fOut2, "Grid3D");
+  fOut2.Close();
+
+  TFile fIn2("grid3D.root", "READ");
+  RegularGrid3D<float, 17, 17, 90> gridIn2{fIn2, "grid", 0, 0, 0, 1, 1, 1};
+
+  std::cout << gridIn2;
+  //============================================================================================
+  return 1;
+
   O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcAnalytical;
   spaceCharge3DCalcAnalytical.setOmegaTauT1T2(0.32f, 1, 1);
   spaceCharge3DCalcAnalytical.setIntegrationSteps(10);
@@ -38,8 +82,8 @@ int main()
   std::cout << "Step 2: Electric Field Calculation: " << diff.count() << std::endl;
 
   start = std::chrono::high_resolution_clock::now();
-  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
-  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields);  // local correction calculation
+  // spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
+  // spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields);  // local correction calculation
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections analytical: " << diff.count() << std::endl;
@@ -51,6 +95,7 @@ int main()
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections numerical: " << diff.count() << std::endl;
+  return 1;
 
   // dump to disk
   TFile fDebug(Form("debug_%i_%i_%i.root", nGridR, nGridZ, nGridPhi), "RECREATE");

@@ -19,6 +19,84 @@
 #include <iostream>
 #include <iomanip>
 #include "matrix.h"
+#include "Rtypes.h" // for ClassDefNV
+
+// i/o
+#include "TFile.h"
+
+template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsigned int Nz = 4>
+struct DataContainer3D {
+
+  static constexpr size_t FNdataPoints{Nx * Ny * Nz}; ///< number of values stored in the container
+  inline static DataT mData[FNdataPoints]{0};         ///< large array for storage of data (could also be a unique_ptr)
+
+  const DataT& operator[](size_t i) const { return mData[i]; }
+  DataT& operator[](size_t i) { return mData[i]; }
+
+  static constexpr size_t getNDataPoints()
+  {
+    return FNdataPoints;
+  }
+
+  int writeToFile(TFile& outf, const char* name = "data")
+  {
+
+    if (outf.IsZombie()) {
+      std::cout << "Failed to write to file " << outf.GetName() << std::endl;
+      return -1;
+    }
+
+    setStreamer();
+    outf.WriteObjectAny(this, DataContainer3D<DataT, Nx, Ny, Nz>::Class(), name);
+    return 0;
+  }
+
+  inline static DataContainer3D<DataT, Nx, Ny, Nz>* readFromFile(TFile& inpf, const char* name = "data")
+  {
+    /// read from file
+    if (inpf.IsZombie()) {
+      std::cout << "Failed to read from file " << inpf.GetName() << std::endl;
+      return nullptr;
+    }
+
+    DataContainer3D<DataT, Nx, Ny, Nz>* dataCont{nullptr};
+    dataCont->setStreamer();
+    dataCont = reinterpret_cast<DataContainer3D<DataT, Nx, Ny, Nz>*>(inpf.GetObjectChecked(name, DataContainer3D<DataT, Nx, Ny, Nz>::Class()));
+    if (!dataCont) {
+      std::cout << "Failed to load " << name << " from " << inpf.GetName() << std::endl;
+      return nullptr;
+    }
+
+    return dataCont;
+  }
+
+ private:
+  void setStreamer() const
+  {
+    auto* tClass = DataContainer3D<DataT, Nx, Ny, Nz>::Class();
+    const char* className = DataContainer3D<DataT, Nx, Ny, Nz>::Class()->GetName();
+    if (tClass) {
+      tClass->SetStreamerFunc(dataStreamer);
+    } else {
+      const char* errMsg{Form("Streamer: dictionary for following class is not available: %s", className)};
+      throw(std::runtime_error(errMsg));
+    }
+  }
+
+  //custom data streamer for static array
+  static void dataStreamer(TBuffer& buf, void* objPtr)
+  {
+    DataContainer3D<DataT, Nx, Ny, Nz>* dataCont = (DataContainer3D<DataT, Nx, Ny, Nz>*)objPtr;
+    if (buf.IsReading()) {
+      // buf >> dataCont->mem;
+      buf.ReadFastArray(dataCont->mData, FNdataPoints);
+    } else {
+      // buf << dataCont->mem;
+      buf.WriteFastArray(dataCont->mData, FNdataPoints);
+    }
+  }
+  ClassDefNV(DataContainer3D, 1);
+};
 
 template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsigned int Nz = 4>
 struct RegularGrid3D {
@@ -30,13 +108,20 @@ struct RegularGrid3D {
     initLists(spacingX, spacingY, spacingZ);
   }
 
-  RegularGrid3D(const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}} {
+  RegularGrid3D(const DataT xmin = 0, const DataT ymin = 0, const DataT zmin = 0, const DataT spacingX = 1, const DataT spacingY = 1, const DataT spacingZ = 1) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}}
+  {
     initLists(spacingX, spacingY, spacingZ);
+  }
+
+  RegularGrid3D(TFile& inpf, const char* name = "data", const DataT xmin = 0, const DataT ymin = 0, const DataT zmin = 0, const DataT spacingX = 1, const DataT spacingY = 1, const DataT spacingZ = 1) : mMin{{xmin, ymin, zmin}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}}
+  {
+    initLists(spacingX, spacingY, spacingZ);
+    initFromFile(inpf, name);
   }
 
   void initArray(const DataT* gridData)
   {
-    memcpy(mGridData.get(), gridData, Nx * Ny * Nz * sizeof(DataT));
+    memcpy(mGridData.mData, gridData, Nx * Ny * Nz * sizeof(DataT));
   }
 
   /// \param ix x vertex
@@ -94,19 +179,19 @@ struct RegularGrid3D {
     return true;
   }
 
-  const DataT& operator[](size_t i) const { return mGridData.get()[i]; }
-  DataT& operator[](size_t i) { return mGridData.get()[i]; }
+  const DataT& operator[](size_t i) const { return mGridData[i]; }
+  DataT& operator[](size_t i) { return mGridData[i]; }
 
   const DataT& operator()(size_t ix, size_t iy, size_t iz) const
   {
     const size_t ind = getDataIndex(ix, iy, iz);
-    return mGridData.get()[ind];
+    return mGridData[ind];
   }
 
   DataT& operator()(size_t ix, size_t iy, size_t iz)
   {
     const size_t ind = getDataIndex(ix, iy, iz);
-    return mGridData.get()[ind];
+    return mGridData[ind];
   }
 
   /// \param dim dimension of interest
@@ -152,17 +237,31 @@ struct RegularGrid3D {
     }
   }
 
-
-  DataT getXVertex(const size_t index) const{
+  DataT getXVertex(const size_t index) const
+  {
     return listXVertices[index];
   }
 
-  DataT getYVertex(const size_t index) const{
+  DataT getYVertex(const size_t index) const
+  {
     return listYVertices[index];
   }
 
-  DataT getZVertex(const size_t index) const{
+  DataT getZVertex(const size_t index) const
+  {
     return listZVertices[index];
+  }
+
+  // set the values of the grid from root file
+  void initFromFile(TFile& inpf, const char* name = "data")
+  {
+    mGridData = *DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name);
+  }
+
+  // set the values of the grid from root file
+  void storeValuesToFile(TFile& outf, const char* name = "data")
+  {
+    mGridData.writeToFile(outf, name);
   }
 
  private:
@@ -171,33 +270,33 @@ struct RegularGrid3D {
   static constexpr unsigned int FY = 1;   // index for y coordinate
   static constexpr unsigned int FZ = 2;   // index for z coordinate
 
-  const Vector<DataT, FDim> mMin{};                              // min positions of grid
-  const Vector<DataT, FDim> mInvSpacing{};                       // inverse spacing of grid
-  const Vector<DataT, FDim> mMaxIndex{{Nx - 1, Ny - 1, Nz - 1}}; // max index which is on the grid in all dimensions
+  DataContainer3D<DataT, Nx, Ny, Nz> mGridData;
 
+  const Vector<DataT, FDim> mMin{};                              //! min positions of grid
+  const Vector<DataT, FDim> mInvSpacing{};                       //! inverse spacing of grid
+  const Vector<DataT, FDim> mMaxIndex{{Nx - 1, Ny - 1, Nz - 1}}; //! max index which is on the grid in all dimensions
   static constexpr size_t FNdim[FDim]{Nx, Ny, Nz};
-  static constexpr size_t FNdataPoints{Nx * Ny * Nz};
-
-  std::unique_ptr<DataT[]> mGridData = std::make_unique<DataT[]>(FNdataPoints);
 
   DataT listXVertices[Nx]{};
   DataT listYVertices[Ny]{};
   DataT listZVertices[Nz]{};
 
-  void initLists(const DataT spacingX, const DataT spacingY, const DataT spacingZ){
+  void initLists(const DataT spacingX, const DataT spacingY, const DataT spacingZ)
+  {
 
-    for(size_t i=0; i<Nx; ++i){
-      listXVertices[i] = getGridMinX() + i*spacingX;
+    for (size_t i = 0; i < Nx; ++i) {
+      listXVertices[i] = getGridMinX() + i * spacingX;
     }
 
-    for(size_t i=0; i<Ny; ++i){
-      listYVertices[i] = getGridMinY() + i*spacingY;
+    for (size_t i = 0; i < Ny; ++i) {
+      listYVertices[i] = getGridMinY() + i * spacingY;
     }
 
-    for(size_t i=0; i<Nz; ++i){
-      listZVertices[i] = getGridMinZ() + i*spacingZ;
+    for (size_t i = 0; i < Nz; ++i) {
+      listZVertices[i] = getGridMinZ() + i * spacingZ;
     }
   }
+  ClassDefNV(RegularGrid3D, 1);
 };
 
 template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>

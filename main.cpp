@@ -20,12 +20,15 @@ int main()
   TFile fOut("grid3D.root", "RECREATE");
   // using dataContType = DataContainer3D<float,nGridR,nGridZ,nGridPhi>;
   DataContainer3D<float, nGridR, nGridZ, nGridPhi> containerOut;
+  DataContainer3D<float, nGridR, nGridZ, nGridPhi> containerOut2;
 
   // set dummy values
   for (size_t i = 0; i < nGridR * nGridZ * nGridPhi; ++i) {
     containerOut[i] = i;
   }
-
+  std::cout<<"containerOut: "<<containerOut[3] << std::endl;
+  std::cout<<"containerOut2: "<<containerOut2[3] << std::endl;
+  // return 1;
   // dump to disc
   containerOut.writeToFile(fOut, "grid");
   fOut.Close();
@@ -46,12 +49,12 @@ int main()
     }
   }
 
-  TFile fOut2("grid3D.root", "RECREATE");
+  TFile fOut2("grid3D_2.root", "RECREATE");
   gridIn.storeValuesToFile(fOut2, "Grid3D");
   fOut2.Close();
 
-  TFile fIn2("grid3D.root", "READ");
-  RegularGrid3D<float, 17, 17, 90> gridIn2{fIn2, "grid", 0, 0, 0, 1, 1, 1};
+  TFile fIn2("grid3D_2.root", "READ");
+  RegularGrid3D<float, 17, 17, 90> gridIn2{fIn2, "Grid3D", 0, 0, 0, 1, 1, 1};
 
   std::cout << gridIn2;
   //============================================================================================

@@ -15,7 +15,9 @@ endif(ROOT_FOUND)
 #find_package(ROOT 6.23 CONFIG REQUIRED)
 
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native")
+#set(CMAKE_CXX_FLAGS "-Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wall -Wextra -O3 -march=native -pedantic")
+
+set(CMAKE_CXX_FLAGS "-Wall -O3 -march=native")
 set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3")
 
 find_package(OpenMP REQUIRED)

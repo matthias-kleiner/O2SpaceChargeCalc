@@ -109,7 +109,7 @@ struct DataContainer3D {
   //custom data streamer for static array
   static constexpr void dataStreamer(TBuffer& buf, void* objPtr)
   {
-    DataContainer3D<DataT, Nx, Ny, Nz>* dataCont = (DataContainer3D<DataT, Nx, Ny, Nz>*)objPtr;
+    DataContainer3D<DataT, Nx, Ny, Nz>* dataCont = static_cast<DataContainer3D<DataT, Nx, Ny, Nz>*>(objPtr);
     if (buf.IsReading()) {
       // buf >> dataCont->mem;
       buf.ReadFastArray(dataCont->mData.get(), FNdataPoints);
@@ -118,7 +118,7 @@ struct DataContainer3D {
       buf.WriteFastArray(dataCont->mData.get(), FNdataPoints);
     }
   }
-  ClassDefNV(DataContainer3D, 1);
+  ClassDefNV(DataContainer3D, 1)
 };
 
 template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsigned int Nz = 4>
@@ -144,7 +144,8 @@ struct RegularGrid3D {
 
   void initArray(const DataT* gridData)
   {
-    memcpy(mGridData.mData, gridData, Nx * Ny * Nz * sizeof(DataT));
+    // memcpy(mGridData.mData, gridData, Nx * Ny * Nz * sizeof(DataT));
+    memcpy(mGridData.mData.get(), gridData, Nx * Ny * Nz * sizeof(DataT));
   }
 
   /// \param ix x vertex
@@ -328,7 +329,7 @@ struct RegularGrid3D {
       listZVertices[i] = getGridMinZ() + i * spacingZ;
     }
   }
-  ClassDefNV(RegularGrid3D, 1);
+  ClassDefNV(RegularGrid3D, 1)
 };
 
 // template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>

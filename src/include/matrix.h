@@ -41,7 +41,7 @@ class Vector
  public:
   Vector(const Vc::Memory<VDataT, N>& dataVector) : mDataVector(dataVector) {}
 
-  Vector(){};
+  Vector() {}
 
   Vector(const DataT dataArr, size_t size)
   {
@@ -50,14 +50,14 @@ class Vector
       // mDataVector.vector(i) += V(&dataArr[i], Vc::Aligned);
       // std::cout<<'test'<<std::endl;
     }
-  };
+  }
 
   Vector(const DataT val)
   {
     for (size_t i = 0; i < N; ++i) {
       mDataVector.scalar(i) = val;
     }
-  };
+  }
 
   const DataT operator[](size_t i) const { return mDataVector.scalar(i); }
   DataT& operator[](size_t i) { return mDataVector.scalar(i); }

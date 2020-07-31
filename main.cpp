@@ -8,57 +8,19 @@
 #include "TFile.h"
 #include <chrono>
 
-int main()
+int main(int argc, char const *argv[])
 {
+  std::stringstream strValue;
+  strValue << argv[1];
+  int nThreads;
+  strValue >> nThreads;
+  std::cout<<"nThreads: "<<nThreads<<std::endl;
+  omp_set_num_threads(nThreads);
+
   using DataT = float;
-
-  const unsigned int nGridR = 17;
-  const unsigned int nGridZ = 17;
-  const unsigned int nGridPhi = 90;
-
-  //====================== dump regular grid to file testing ====================================
-  TFile fOut("grid3D.root", "RECREATE");
-  // using dataContType = DataContainer3D<float,nGridR,nGridZ,nGridPhi>;
-  DataContainer3D<float, nGridR, nGridZ, nGridPhi> containerOut;
-  DataContainer3D<float, nGridR, nGridZ, nGridPhi> containerOut2;
-
-  // set dummy values
-  for (size_t i = 0; i < nGridR * nGridZ * nGridPhi; ++i) {
-    containerOut[i] = i;
-  }
-  std::cout<<"containerOut: "<<containerOut[3] << std::endl;
-  std::cout<<"containerOut2: "<<containerOut2[3] << std::endl;
-  // return 1;
-  // dump to disc
-  containerOut.writeToFile(fOut, "grid");
-  fOut.Close();
-
-  // create a regular grid with the dumped data
-  TFile fIn("grid3D.root", "READ");
-  RegularGrid3D<float, 17, 17, 90> gridIn{fIn, "grid", 0, 0, 0, 1, 1, 1};
-
-  std::cout << gridIn;
-
-  // modify values in regular grid
-  for (size_t iPhi = 0; iPhi < nGridPhi; ++iPhi) {
-    for (size_t iR = 0; iR < nGridR; ++iR) {
-      for (size_t iZ = 0; iZ < nGridZ; ++iZ) {
-        int ind = iZ + iR*nGridZ + nGridZ*nGridR*iPhi;
-        gridIn(iZ, iR, iPhi) = ind;
-      }
-    }
-  }
-
-  TFile fOut2("grid3D_2.root", "RECREATE");
-  gridIn.storeValuesToFile(fOut2, "Grid3D");
-  fOut2.Close();
-
-  TFile fIn2("grid3D_2.root", "READ");
-  RegularGrid3D<float, 17, 17, 90> gridIn2{fIn2, "Grid3D", 0, 0, 0, 1, 1, 1};
-
-  std::cout << gridIn2;
-  //============================================================================================
-  return 1;
+  const unsigned int nGridR = 129;
+  const unsigned int nGridZ = 129;
+  const unsigned int nGridPhi = 180;
 
   O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcAnalytical;
   spaceCharge3DCalcAnalytical.setOmegaTauT1T2(0.32f, 1, 1);
@@ -73,16 +35,33 @@ int main()
   const DataT stoppingConvergence = 1e-8;
 
   auto start = std::chrono::high_resolution_clock::now();
-  spaceCharge3DCalcNumerical.fillBoundaryAndChargeDensities(anaFields, maxIteration, stoppingConvergence);
+  spaceCharge3DCalcNumerical.fillBoundaryAndChargeDensities(anaFields);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> diff = end - start;
-  std::cout << "Step 1: Poisson solver: " << diff.count() << std::endl;
+  std::cout << "Step 0: Fill Boundary and Charge Densities: " << diff.count() << std::endl;
+
+  // start = std::chrono::high_resolution_clock::now();
+  // spaceCharge3DCalcNumerical.poissonSolver(maxIteration, stoppingConvergence);
+  // end = std::chrono::high_resolution_clock::now();
+  // std::cout << "Step 1: Poisson solver: " << diff.count() << std::endl;
+
+  TFile fPot( Form("Potential_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "READ");
+  std::cout << "========= LOADING POTENTIAL: =========" << std::endl;
+  spaceCharge3DCalcNumerical.setPotentialFieldFromFile(fPot);
+  std::cout << "=========  POTENTIAL LOADED: ========= " << std::endl;
 
   start = std::chrono::high_resolution_clock::now();
-  spaceCharge3DCalcNumerical.calcEField();
+  std::cout << "=========  CALC EFIELD: =========" << std::endl;
+  spaceCharge3DCalcNumerical.calcEField(); // calculate e field
+  std::cout << "=========  EFIELD CALCULATED: =========" << std::endl;
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 2: Electric Field Calculation: " << diff.count() << std::endl;
+
+  // TFile fEField( Form("EField_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "READ");
+  // spaceCharge3DCalcNumerical.setEFieldFromFile(fEField); // calculate e field
+  // spaceCharge3DCalcNumerical.dumpElectricFields(fEField);
+  // return 1;
 
   start = std::chrono::high_resolution_clock::now();
   // spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
@@ -91,14 +70,15 @@ int main()
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections analytical: " << diff.count() << std::endl;
 
-  NumericalFields<DataT, nGridR, nGridZ, nGridPhi> numFields(spaceCharge3DCalcNumerical.getGridEr(), spaceCharge3DCalcNumerical.getGridEz(), spaceCharge3DCalcNumerical.getGridEphi());
+  const auto numFields = spaceCharge3DCalcNumerical.getNumericalFieldsInterpolator();
+
   start = std::chrono::high_resolution_clock::now();
   spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(false, numFields); // local distortion calculation
   spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(true, numFields);  // local correction calculation
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections numerical: " << diff.count() << std::endl;
-  return 1;
+  // return 1;
 
   // dump to disk
   TFile fDebug(Form("debug_%i_%i_%i.root", nGridR, nGridZ, nGridPhi), "RECREATE");

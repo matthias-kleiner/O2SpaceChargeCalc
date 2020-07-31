@@ -106,11 +106,11 @@ struct AnalyticalFields {
   };
 };
 
-template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
+template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
 struct NumericalFields {
-  using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  // using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
 
-  NumericalFields(const RegularGrid& gridEr, const RegularGrid& gridEz, const RegularGrid& gridEphi) : mGridEr{gridEr}, mGridEz{gridEz}, mGridEphi{gridEphi} {};
+  NumericalFields(const Grid3D& gridEr, const Grid3D& gridEz, const Grid3D& gridEphi) : mGridEr{gridEr}, mGridEz{gridEz}, mGridEphi{gridEphi} {};
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -139,15 +139,15 @@ struct NumericalFields {
     return mInterpolatorEphi(z, r, phi);
   }
 
-  const RegularGrid& mGridEr{};   // adress to the data container of the grid
-  const RegularGrid& mGridEz{};   // adress to the data container of the grid
-  const RegularGrid& mGridEphi{}; // adress to the data container of the grid
+  const Grid3D& mGridEr{};   // adress to the data container of the grid
+  const Grid3D& mGridEz{};   // adress to the data container of the grid
+  const Grid3D& mGridEphi{}; // adress to the data container of the grid
   const bool mCircularZ = false;
   const bool mCircularR = false;
   const bool mCircularPhi = true;
-  TriCubicInterpolator<DataT, RegularGrid> mInterpolatorEr{mGridEr, mCircularZ, mCircularR, mCircularPhi};
-  TriCubicInterpolator<DataT, RegularGrid> mInterpolatorEz{mGridEz, mCircularZ, mCircularR, mCircularPhi};
-  TriCubicInterpolator<DataT, RegularGrid> mInterpolatorEphi{mGridEphi, mCircularZ, mCircularR, mCircularPhi};
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEr{mGridEr, mCircularZ, mCircularR, mCircularPhi};
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEz{mGridEz, mCircularZ, mCircularR, mCircularPhi};
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEphi{mGridEphi, mCircularZ, mCircularR, mCircularPhi};
 };
 
 /// \tparam DataT the type of data which is used during the calculations
@@ -186,11 +186,11 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
   static constexpr DataT getEzField() { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
   // constexpr DataT getRMin() const { return ASolv::fgkIFCRadius; }
-  const RegularGrid3D<DataT, Nr, Nz, Nphi>& getGrid3D() const { return mGrid3D; }
+  const RegularGrid& getGrid3D() const { return mGrid3D; }
 
-  NumericalFields<DataT, Nr, Nz, Nphi> getNumericalFieldsInterpolator() const
+  NumericalFields<DataT, RegularGrid> getNumericalFieldsInterpolator() const
   {
-    const NumericalFields<DataT, Nr, Nz, Nphi> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi);
+    NumericalFields<DataT, RegularGrid> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi);
     return numFields;
   }
 
@@ -240,7 +240,7 @@ class O2TPCSpaceCharge3DCalc
     return mElectricFieldEphi(iz, ir, iphi);
   }
 
-  int getIntegrationSteps() const { return mIntegrationSteps; }
+  int getIntegrationSteps() const { return mStepWidth; }
 
   DataT getPhiVertex(size_t index) const
   {
@@ -286,7 +286,7 @@ class O2TPCSpaceCharge3DCalc
     fC1 = c1;
   }
 
-  void setIntegrationSteps(const int nSteps) { mIntegrationSteps = nSteps; }
+  void setIntegrationSteps(const int nSteps) { mStepWidth = nSteps; }
 
   /// numerical integration strategys
   enum IntegrationStrategy { Trapezoidal = 0,
@@ -333,12 +333,16 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT mZMin = 0;                                                              ///< min z coordinate
   static constexpr DataT mPhiMin = 0;                                                            ///< min phi coordinate
   int mNumericalIntegrationStrategy = Simpson;                                                   ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
-  int mIntegrationSteps = 1;                                                                     ///< number of integration steps performed between each bin in Z. e.g.: 1: direct integration from z[i] -> z[i+1]    2: z[i] -> z[i] + (z[i+1] - z[i])/2 > z[i+1]
+  unsigned int mNumericalIntegrationSteps = 1;                                                   ///< number of intervalls during numerical integration are taken.
+  int mStepWidth = 1;                                                                            ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
 
-  DataT fC0 = 0.f; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
-  DataT fC1 = 0.f; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
+  // const size_t mNThreads{1};
 
-  // using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  // TriCubicInterpolator<float,RegularGrid>::mNThreads = mNThreads;
+
+  DataT fC0 = 0; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
+  DataT fC1 = 0; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
+
   RegularGrid mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< this grid contains the values for the local distortions/corrections, electric field etc.
 
   RegularGrid mLocalDistdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
@@ -403,6 +407,7 @@ template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
 void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsTrapezoidal(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
 {
+  //========trapezoidal rule see: https://en.wikipedia.org/wiki/Trapezoidal_rule ==============
   const DataT ezField = getEzField();
 
   const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
@@ -416,14 +421,14 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsTrapezoidal(co
   const DataT eZ0 = ezField + fieldez0;
   const DataT eZ1 = ezField + fieldez1;
 
-  const int nSteps = 1; //getIntegrationSteps(); //mNumericalIntegrationSteps;
+  const unsigned int nSteps = mNumericalIntegrationSteps;
   const DataT deltaX = (p2z - p1z) / nSteps;
-  //========trapezoidal rule==============
+
   DataT fieldSumEr = 0;
   DataT fieldSumEphi = 0;
   DataT fieldSumEz = 0;
 
-  for (int i = 1; i < nSteps; ++i) {
+  for (unsigned int i = 1; i < nSteps; ++i) {
     const DataT xk1Tmp = p1z + i * deltaX;
     const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
     const DataT ezField1Denominator = 1 / ezField + ezField1;
@@ -456,7 +461,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpson(const 
   const DataT eZ0 = ezField + fieldez0;
   const DataT eZ1 = ezField + fieldez1;
 
-  const int nSteps = 1; //getIntegrationSteps(); //mNumericalIntegrationSteps;
+  const unsigned int nSteps = mNumericalIntegrationSteps;
   const DataT deltaX = (p2z - p1z) / nSteps;
 
   DataT fieldSum1ErOverEz = 0;
@@ -466,7 +471,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpson(const 
   DataT fieldSum1Ez = 0;
   DataT fieldSum2Ez = 0;
 
-  for (int i = 1; i < nSteps; ++i) {
+  for (unsigned int i = 1; i < nSteps; ++i) {
     const DataT xk1Tmp = p1z + i * deltaX;
     const DataT xk2 = xk1Tmp - static_cast<DataT>(0.5) * deltaX;
 
@@ -501,7 +506,7 @@ template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
 void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct)
 {
-  // #pragma omp parallel for num_threads(nTHREADS)
+#pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; iPhi++) {
     const DataT phi = getPhiVertex(iPhi);
     for (size_t iR = 0; iR < Nr; iR++) {

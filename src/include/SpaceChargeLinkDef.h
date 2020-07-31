@@ -23,6 +23,9 @@
 #pragma link C++ class RegularGrid3D < float, 17, 17, 90> + ;
 #pragma link C++ class DataContainer3D < float, 17, 17, 90> + ;
 
+#pragma link C++ class RegularGrid3D < float, 129, 129, 180> + ;
+#pragma link C++ class DataContainer3D < float, 129, 129, 180> + ;
+
 #pragma link C++ class Vector < float, 3> + ;
 
 #endif

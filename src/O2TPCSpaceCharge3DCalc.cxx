@@ -122,7 +122,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcEField()
       mElectricFieldEz(Nz - 1, iR, iPhi) = -1 * (static_cast<DataT>(1.5) * mPotential(Nz - 1, iR, iPhi) - 2 * mPotential(Nz - 2, iR, iPhi) + static_cast<DataT>(0.5) * mPotential(Nz - 3, iR, iPhi)) * getInvSpacingZ();
     }
 
-    for (size_t iR = 0; iR < Nr - 1; ++iR) {
+    for (size_t iR = 1; iR < Nr - 1; ++iR) {
       const DataT radius = getRVertex(iR);
       for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
         mElectricFieldEr(iZ, iR, iPhi) = -1 * (mPotential(iZ, iR + 1, iPhi) - mPotential(iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction

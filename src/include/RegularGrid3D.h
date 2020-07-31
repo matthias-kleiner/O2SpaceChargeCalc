@@ -29,17 +29,39 @@ struct DataContainer3D {
 
   static constexpr size_t FNdataPoints{Nx * Ny * Nz}; ///< number of values stored in the container
   // inline static DataT mData[FNdataPoints]{0};         ///< large array for storage of data (could also be a unique_ptr)
-    std::unique_ptr<DataT[]> mData = std::make_unique<DataT[]>(FNdataPoints);
+  std::unique_ptr<DataT[]> mData = std::make_unique<DataT[]>(FNdataPoints);
 
   const DataT& operator[](size_t i) const { return mData[i]; }
   DataT& operator[](size_t i) { return mData[i]; }
+
+  const DataT& operator()(size_t ix, size_t iy, size_t iz) const
+  {
+    const size_t ind = getDataIndex(ix, iy, iz);
+
+    return mData[ind];
+  }
+
+  DataT& operator()(size_t ix, size_t iy, size_t iz)
+  {
+    const size_t ind = getDataIndex(ix, iy, iz);
+    return mData[ind];
+  }
+
+  size_t getDataIndex(const size_t ix, const size_t iy, const size_t iz) const
+  {
+    const size_t indX = ix;
+    const size_t indY = iy;
+    const size_t indZ = iz;
+    const size_t index = indX + Nx * (indY + indZ * Ny);
+    return index;
+  }
 
   static constexpr size_t getNDataPoints()
   {
     return FNdataPoints;
   }
 
-  int writeToFile(TFile& outf, const char* name = "data")
+  int writeToFile(TFile& outf, const char* name = "data") const
   {
 
     if (outf.IsZombie()) {
@@ -59,8 +81,8 @@ struct DataContainer3D {
       std::cout << "Failed to read from file " << inpf.GetName() << std::endl;
       return nullptr;
     }
-
     DataContainer3D<DataT, Nx, Ny, Nz>* dataCont{nullptr};
+
     dataCont->setStreamer();
     dataCont = reinterpret_cast<DataContainer3D<DataT, Nx, Ny, Nz>*>(inpf.GetObjectChecked(name, DataContainer3D<DataT, Nx, Ny, Nz>::Class()));
     if (!dataCont) {
@@ -72,7 +94,7 @@ struct DataContainer3D {
   }
 
  private:
-  void setStreamer() const
+  static constexpr void setStreamer()
   {
     auto* tClass = DataContainer3D<DataT, Nx, Ny, Nz>::Class();
     const char* className = DataContainer3D<DataT, Nx, Ny, Nz>::Class()->GetName();
@@ -85,7 +107,7 @@ struct DataContainer3D {
   }
 
   //custom data streamer for static array
-  static void dataStreamer(TBuffer& buf, void* objPtr)
+  static constexpr void dataStreamer(TBuffer& buf, void* objPtr)
   {
     DataContainer3D<DataT, Nx, Ny, Nz>* dataCont = (DataContainer3D<DataT, Nx, Ny, Nz>*)objPtr;
     if (buf.IsReading()) {
@@ -131,11 +153,12 @@ struct RegularGrid3D {
   /// \return returns the index to vertex
   size_t getDataIndex(const size_t ix, const size_t iy, const size_t iz) const
   {
-    const size_t indX = ix;
-    const size_t indY = iy;
-    const size_t indZ = iz;
-    const size_t index = indX + Nx * (indY + indZ * Ny);
-    return index;
+    // const size_t indX = ix;
+    // const size_t indY = iy;
+    // const size_t indZ = iz;
+    // const size_t index = indX + Nx * (indY + indZ * Ny);
+    // return index;
+    return mGridData.getDataIndex(ix, iy, iz);
   }
 
   int getDeltaXDataIndex(const int deltaX) const
@@ -185,14 +208,14 @@ struct RegularGrid3D {
 
   const DataT& operator()(size_t ix, size_t iy, size_t iz) const
   {
-    const size_t ind = getDataIndex(ix, iy, iz);
-    return mGridData[ind];
+    // const size_t ind = getDataIndex(ix, iy, iz);
+    return mGridData(ix, iy, iz);
   }
 
   DataT& operator()(size_t ix, size_t iy, size_t iz)
   {
-    const size_t ind = getDataIndex(ix, iy, iz);
-    return mGridData[ind];
+    // const size_t ind = getDataIndex(ix, iy, iz);
+    return mGridData(ix, iy, iz);
   }
 
   /// \param dim dimension of interest
@@ -258,14 +281,19 @@ struct RegularGrid3D {
   void initFromFile(TFile& inpf, const char* name = "data")
   {
     // mGridData = *DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name);
-    const auto &srcBegin = DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name)->mData.get();
-    std::move(srcBegin, std::next(srcBegin, Nx*Ny*Nz), mGridData.mData.get());
+    const auto tmpContainer = DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name);
+    if (!tmpContainer) {
+      std::cout << "Failed to load " << name << " from " << inpf.GetName() << std::endl;
+      return;
+    }
+    const auto& srcBegin = tmpContainer->mData.get();
+    std::move(srcBegin, std::next(srcBegin, tmpContainer->getNDataPoints()), mGridData.mData.get());
   }
 
   // set the values of the grid from root file
-  void storeValuesToFile(TFile& outf, const char* name = "data")
+  int storeValuesToFile(TFile& outf, const char* name = "data") const
   {
-    mGridData.writeToFile(outf, name);
+    return mGridData.writeToFile(outf, name);
   }
 
  private:
@@ -303,31 +331,37 @@ struct RegularGrid3D {
   ClassDefNV(RegularGrid3D, 1);
 };
 
-template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
-std::ostream& operator<<(std::ostream& out, const RegularGrid3D<DataT, Nx, Ny, Nz>& cont)
+// template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
+template <template <typename, unsigned int, unsigned int, unsigned int> typename MClass, typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
+// std::ostream& operator<<(std::ostream& out, const RegularGrid3D<DataT, Nx, Ny, Nz>& cont)
+std::ostream& operator<<(std::ostream& out, const MClass<DataT, Nx, Ny, Nz>& cont)
 {
   out.precision(3);
   auto&& w = std::setw(9);
 
-  for (unsigned int iz = 0; iz < cont.getNZ(); ++iz) {
+  out << std::endl;
+
+  for (unsigned int iz = 0; iz < Nz; ++iz) {
+
+    out << "z layer: " << iz << std::endl;
     // print top x row
     out << "⎡" << w << cont(0, 0, iz);
-    for (unsigned int ix = 1; ix < cont.getNX(); ++ix) {
+    for (unsigned int ix = 1; ix < Nx; ++ix) {
       out << ", " << w << cont(ix, 0, iz);
     }
     out << " ⎤" << std::endl;
 
-    for (unsigned int iy = 1; iy < cont.getNY() - 1; ++iy) {
+    for (unsigned int iy = 1; iy < Ny - 1; ++iy) {
       out << "⎢" << w << cont(0, iy, iz);
-      for (unsigned int ix = 1; ix < cont.getNX(); ++ix) {
+      for (unsigned int ix = 1; ix < Nx; ++ix) {
         out << ", " << w << cont(ix, iy, iz);
       }
       out << " ⎥" << std::endl;
     }
 
-    out << "⎣" << w << cont(0, cont.getNY() - 1, iz);
-    for (unsigned int ix = 1; ix < cont.getNX(); ++ix) {
-      out << ", " << w << cont(ix, cont.getNY() - 1, iz);
+    out << "⎣" << w << cont(0, Ny - 1, iz);
+    for (unsigned int ix = 1; ix < Nx; ++ix) {
+      out << ", " << w << cont(ix, Ny - 1, iz);
     }
     out << " ⎦" << std::endl;
 

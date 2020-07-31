@@ -188,10 +188,10 @@ class O2TPCSpaceCharge3DCalc
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
   void calcGlobalDistortionsCorrections();
 
-  constexpr DataT getGridSpacingR() const { return mGridSpacingR; }
-  constexpr DataT getGridSpacingZ() const { return mGridSpacingZ; }
-  constexpr DataT getGridSpacingPhi() const { return mGridSpacingPhi; }
-  constexpr DataT getEzField() const { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
+  static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
+  static constexpr DataT getGridSpacingZ()  { return mGridSpacingZ; }
+  static constexpr DataT getGridSpacingPhi()  { return mGridSpacingPhi; }
+  static constexpr DataT getEzField()  { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
   // constexpr DataT getRMin() const { return ASolv::fgkIFCRadius; }
   const RegularGrid3D<DataT, Nr, Nz, Nphi>& getGrid3D() const { return mGrid3D; }
 
@@ -293,6 +293,31 @@ class O2TPCSpaceCharge3DCalc
   enum IntegrationStrategy { Trapezoidal = 0,
                              Simpson = 1,
                              Root = 2 };
+
+  int dumpElectricFields(TFile& outf) const {
+    const int er = mElectricFieldEr.storeValuesToFile(outf, "fieldEr");
+    const int ez = mElectricFieldEz.storeValuesToFile(outf, "fieldEz");
+    const int ephi = mElectricFieldEphi.storeValuesToFile(outf, "fieldEphi");
+    return er + ez + ephi;
+  }
+
+  void setEFieldFromFile(TFile& inpf){
+    mElectricFieldEr.initFromFile(inpf, "fieldEr");
+    mElectricFieldEz.initFromFile(inpf, "fieldEz");
+    mElectricFieldEphi.initFromFile(inpf, "fieldEphi");
+  }
+
+  int dumpPotential(TFile& outf) const {
+    return mPotential.storeValuesToFile(outf, "potential");
+  }
+
+  void setPotentialFieldFromFile(TFile& inpf){
+    mPotential.initFromFile(inpf, "potential");
+  }
+
+  void printPotential() const {
+    std::cout<<mPotential;
+  }
 
  private:
   using ASolv = AliTPCPoissonSolver<DataT>;

@@ -163,26 +163,19 @@ class O2TPCSpaceCharge3DCalc
   O2TPCSpaceCharge3DCalc() = default;
 
   // stepp 0:
-  // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step = 0: Fill Boundary and Charge Densities"));
-  void fillBoundaryAndChargeDensities(AnalyticalFields<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence);
+  // TODO change this to accept histogram as input for density
+  void fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct);
 
   // stepp 1:
-  //Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 1: Poisson solver: %f\n", w.CpuTime()));
-  void poissonSolver();
+  void poissonSolver(const int maxIteration, const DataT stoppingConvergence);
 
   // stepp 2:
-  // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 2: Electric Field Calculation: %f\n", w.CpuTime()));
   void calcEField();
 
   // stepp 3:
-  // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 3: Local distortion and correction cpu time: %f\n", w.CpuTime()));
   /// lcorrections=false -> distortions, lcorrections=true->corrections
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct);
-
-  /// calculate distortions or corrections analytical with given funcion
-  template <typename ElectricFields = AnalyticalFields<DataT>>
-  void getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const;
 
   //step 4:
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
@@ -350,6 +343,7 @@ class O2TPCSpaceCharge3DCalc
   RegularGrid mLocalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mLocalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
 
+  RegularGrid mDensity{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mPotential{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mElectricFieldEr{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mElectricFieldEz{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
@@ -369,6 +363,10 @@ class O2TPCSpaceCharge3DCalc
   {
     return mGrid3D.getInvSpacingZ();
   }
+
+  /// calculate distortions or corrections analytical with electric fields
+  template <typename ElectricFields = AnalyticalFields<DataT>>
+  void calcDistortions(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const;
 
   template <typename ElectricFields>
   void integrateEFieldsRoot(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
@@ -514,7 +512,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
           const DataT radiusTmp = radius + drTmp;
           const DataT phiTmp = phi + dPhiTmp;
 
-          getDistortionsAnalytical(radiusTmp, phiTmp, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
+          calcDistortions(radiusTmp, phiTmp, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
           drTmp += ddR;
           dRPhiTmp += ddPhi * radiusTmp;
           dPhiTmp += ddPhi;
@@ -536,7 +534,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const
 {
   DataT localIntErOverEz = 0;
   DataT localIntEPhiOverEz = 0;

@@ -4,26 +4,27 @@ templateClassImp(O2TPCSpaceCharge3DCalc);
 // const int nTHREADS = 8;
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities(AnalyticalFields<DataT>& formulaStruct, const int maxIteration, const DataT stoppingConvergence)
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct)
 {
-  RegularGrid gridPotentialTmp{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid gridDensityTmp{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
     const DataT phi = getPhiVertex(iPhi);
     for (size_t iR = 0; iR < Nr; ++iR) {
       const DataT radius = getRVertex(iR);
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
         const DataT z = getZVertex(iZ);
-        gridDensityTmp(iZ, iR, iPhi) = formulaStruct.evalDensity(z, radius, phi);
+        mDensity(iZ, iR, iPhi) = formulaStruct.evalDensity(z, radius, phi);
 
         if ((iR == 0) || (iR == (Nr - 1)) || (iZ == 0) || (iZ == (Nz - 1))) {
-          gridPotentialTmp(iZ, iR, iPhi) = formulaStruct.evalPotential(z, radius, phi);
+          mPotential(iZ, iR, iPhi) = formulaStruct.evalPotential(z, radius, phi);
         }
       }
     }
   }
+}
 
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::poissonSolver(const int maxIteration, const DataT stoppingConvergence)
+{
   // TODO MODIFY AliTPCPoissonSolver class to accept grid instead TMATRIXD
   TMatrixD* matricesPotential[Nphi];
   TMatrixD* matricesDensity[Nphi];
@@ -32,8 +33,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities
     matricesDensity[iPhi] = new TMatrixD(Nr, Nz);
     for (size_t iR = 0; iR < Nr; ++iR) {
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
-        (*matricesPotential[iPhi])(iR, iZ) = gridPotentialTmp(iZ, iR, iPhi);
-        (*matricesDensity[iPhi])(iR, iZ) = gridDensityTmp(iZ, iR, iPhi);
+        (*matricesPotential[iPhi])(iR, iZ) = mPotential(iZ, iR, iPhi);
+        (*matricesDensity[iPhi])(iR, iZ) = mDensity(iZ, iR, iPhi);
       }
     }
   }

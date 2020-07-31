@@ -28,7 +28,6 @@ template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsi
 struct DataContainer3D {
 
   static constexpr size_t FNdataPoints{Nx * Ny * Nz}; ///< number of values stored in the container
-  // inline static DataT mData[FNdataPoints]{0};         ///< large array for storage of data (could also be a unique_ptr)
   std::unique_ptr<DataT[]> mData = std::make_unique<DataT[]>(FNdataPoints);
 
   const DataT& operator[](size_t i) const { return mData[i]; }
@@ -144,7 +143,6 @@ struct RegularGrid3D {
 
   void initArray(const DataT* gridData)
   {
-    // memcpy(mGridData.mData, gridData, Nx * Ny * Nz * sizeof(DataT));
     memcpy(mGridData.mData.get(), gridData, Nx * Ny * Nz * sizeof(DataT));
   }
 
@@ -278,17 +276,14 @@ struct RegularGrid3D {
   }
 
   // set the values of the grid from root file
-  // TODO OPTIMIZE THIS
   void initFromFile(TFile& inpf, const char* name = "data")
   {
-    // mGridData = *DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name);
     const auto tmpContainer = DataContainer3D<DataT, Nx, Ny, Nz>::readFromFile(inpf, name);
     if (!tmpContainer) {
       std::cout << "Failed to load " << name << " from " << inpf.GetName() << std::endl;
       return;
     }
-    const auto& srcBegin = tmpContainer->mData.get();
-    std::move(srcBegin, std::next(srcBegin, tmpContainer->getNDataPoints()), mGridData.mData.get());
+    memcpy(mGridData.mData.get(), tmpContainer->mData.get(), tmpContainer->getNDataPoints() * sizeof(DataT));
   }
 
   // set the values of the grid from root file

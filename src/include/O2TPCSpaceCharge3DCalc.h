@@ -242,19 +242,19 @@ class O2TPCSpaceCharge3DCalc
 
   int getIntegrationSteps() const { return mStepWidth; }
 
-  DataT getPhiVertex(size_t index) const
+  DataT getPhiVertex(size_t indexPhi) const
   {
-    return mGrid3D.getZVertex(index);
+    return mGrid3D.getZVertex(indexPhi);
   }
 
-  DataT getRVertex(size_t index) const
+  DataT getRVertex(size_t indexR) const
   {
-    return mGrid3D.getYVertex(index);
+    return mGrid3D.getYVertex(indexR);
   }
 
-  DataT getZVertex(size_t index) const
+  DataT getZVertex(size_t indexZ) const
   {
-    return mGrid3D.getXVertex(index);
+    return mGrid3D.getXVertex(indexZ);
   }
 
   const RegularGrid& getGridEr() const
@@ -301,7 +301,7 @@ class O2TPCSpaceCharge3DCalc
     return er + ez + ephi;
   }
 
-  void setEFieldFromFile(TFile& inpf)
+  void setElectricFieldsFromFile(TFile& inpf)
   {
     mElectricFieldEr.initFromFile(inpf, "fieldEr");
     mElectricFieldEz.initFromFile(inpf, "fieldEz");
@@ -313,7 +313,7 @@ class O2TPCSpaceCharge3DCalc
     return mPotential.storeValuesToFile(outf, "potential");
   }
 
-  void setPotentialFieldFromFile(TFile& inpf)
+  void setPotentialFromFile(TFile& inpf)
   {
     mPotential.initFromFile(inpf, "potential");
   }

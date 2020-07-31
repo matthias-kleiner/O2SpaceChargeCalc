@@ -8,13 +8,13 @@
 #include "TFile.h"
 #include <chrono>
 
-int main(int argc, char const *argv[])
+int main(int argc, char const* argv[])
 {
   std::stringstream strValue;
   strValue << argv[1];
   int nThreads;
   strValue >> nThreads;
-  std::cout<<"nThreads: "<<nThreads<<std::endl;
+  std::cout << "nThreads: " << nThreads << std::endl;
   omp_set_num_threads(nThreads);
 
   using DataT = float;
@@ -45,9 +45,9 @@ int main(int argc, char const *argv[])
   // end = std::chrono::high_resolution_clock::now();
   // std::cout << "Step 1: Poisson solver: " << diff.count() << std::endl;
 
-  TFile fPot( Form("Potential_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "READ");
+  TFile fPot(Form("Potential_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "READ");
   std::cout << "========= LOADING POTENTIAL: =========" << std::endl;
-  spaceCharge3DCalcNumerical.setPotentialFieldFromFile(fPot);
+  spaceCharge3DCalcNumerical.setPotentialFromFile(fPot);
   std::cout << "=========  POTENTIAL LOADED: ========= " << std::endl;
 
   start = std::chrono::high_resolution_clock::now();

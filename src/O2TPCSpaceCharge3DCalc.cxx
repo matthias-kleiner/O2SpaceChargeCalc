@@ -143,4 +143,20 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcEField()
 
 template class O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
 template class O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
-// template class O2TPCSpaceCharge3DCalc<double, 17, 17, 90>;
+
+// using DataTF = float;
+// using O2TPCSpaceCharge3DCalc17 = O2TPCSpaceCharge3DCalc<DataTF, 17, 17, 90>;
+// using O2TPCSpaceCharge3DCalc129 = O2TPCSpaceCharge3DCalc<DataTF, 129, 129, 180>;
+//
+// template class O2TPCSpaceCharge3DCalc<DataTF, 17, 17, 90>;
+// template class O2TPCSpaceCharge3DCalc<DataTF, 129, 129, 180>;
+//
+// using NumFields17 = NumericalFields<DataTF, 17, 17, 90>;
+// using NumFields129 = NumericalFields<DataTF, 129, 129, 180>;
+// using AnaFields17 = AnalyticalFields<DataTF>;
+// using AnaFields129 = AnalyticalFields<DataTF>;
+//
+// template void O2TPCSpaceCharge3DCalc17::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, NumFields17&) const;
+// template void O2TPCSpaceCharge3DCalc129::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, NumFields129&) const;
+// template void O2TPCSpaceCharge3DCalc17::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, AnaFields17&) const;
+// template void O2TPCSpaceCharge3DCalc129::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, AnaFields129&) const;

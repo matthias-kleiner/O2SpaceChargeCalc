@@ -189,9 +189,9 @@ class O2TPCSpaceCharge3DCalc
   void calcGlobalDistortionsCorrections();
 
   static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
-  static constexpr DataT getGridSpacingZ()  { return mGridSpacingZ; }
-  static constexpr DataT getGridSpacingPhi()  { return mGridSpacingPhi; }
-  static constexpr DataT getEzField()  { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
+  static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
+  static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
+  static constexpr DataT getEzField() { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
   // constexpr DataT getRMin() const { return ASolv::fgkIFCRadius; }
   const RegularGrid3D<DataT, Nr, Nz, Nphi>& getGrid3D() const { return mGrid3D; }
 
@@ -294,29 +294,34 @@ class O2TPCSpaceCharge3DCalc
                              Simpson = 1,
                              Root = 2 };
 
-  int dumpElectricFields(TFile& outf) const {
+  int dumpElectricFields(TFile& outf) const
+  {
     const int er = mElectricFieldEr.storeValuesToFile(outf, "fieldEr");
     const int ez = mElectricFieldEz.storeValuesToFile(outf, "fieldEz");
     const int ephi = mElectricFieldEphi.storeValuesToFile(outf, "fieldEphi");
     return er + ez + ephi;
   }
 
-  void setEFieldFromFile(TFile& inpf){
+  void setEFieldFromFile(TFile& inpf)
+  {
     mElectricFieldEr.initFromFile(inpf, "fieldEr");
     mElectricFieldEz.initFromFile(inpf, "fieldEz");
     mElectricFieldEphi.initFromFile(inpf, "fieldEphi");
   }
 
-  int dumpPotential(TFile& outf) const {
+  int dumpPotential(TFile& outf) const
+  {
     return mPotential.storeValuesToFile(outf, "potential");
   }
 
-  void setPotentialFieldFromFile(TFile& inpf){
+  void setPotentialFieldFromFile(TFile& inpf)
+  {
     mPotential.initFromFile(inpf, "potential");
   }
 
-  void printPotential() const {
-    std::cout<<mPotential;
+  void printPotential() const
+  {
+    std::cout << mPotential;
   }
 
  private:
@@ -334,21 +339,6 @@ class O2TPCSpaceCharge3DCalc
   DataT fC0 = 0.f; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
   DataT fC1 = 0.f; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
 
-  DataT getInvSpacingR() const
-  {
-    return mGrid3D.getInvSpacingY();
-  }
-
-  DataT getInvSpacingZ() const
-  {
-    return mGrid3D.getInvSpacingX();
-  }
-
-  DataT getInvSpacingPhi() const
-  {
-    return mGrid3D.getInvSpacingZ();
-  }
-
   // using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
   RegularGrid mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< this grid contains the values for the local distortions/corrections, electric field etc.
 
@@ -364,6 +354,131 @@ class O2TPCSpaceCharge3DCalc
   RegularGrid mElectricFieldEr{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mElectricFieldEz{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mElectricFieldEphi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+
+  DataT getInvSpacingR() const
+  {
+    return mGrid3D.getInvSpacingY();
+  }
+
+  DataT getInvSpacingZ() const
+  {
+    return mGrid3D.getInvSpacingX();
+  }
+
+  DataT getInvSpacingPhi() const
+  {
+    return mGrid3D.getInvSpacingZ();
+  }
+
+  template <typename ElectricFields>
+  void integrateEFieldsRoot(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+  {
+    const DataT ezField = getEzField();
+    TF1 fErOverEz("fErOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEr(p1r, p1phi, static_cast<DataT>(x[0])) / (formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) + ezField)); }, p1z, p2z, 1);
+    localIntErOverEz = static_cast<DataT>(fErOverEz.Integral(p1z, p2z));
+
+    TF1 fEphiOverEz("fEPhiOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEphi(p1r, p1phi, static_cast<DataT>(x[0])) / (formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) + ezField)); }, p1z, p2z, 1);
+    localIntEPhiOverEz = static_cast<DataT>(fEphiOverEz.Integral(p1z, p2z));
+
+    TF1 fEz("fEZOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) - ezField); }, p1z, p2z, 1);
+    localIntDeltaEz = static_cast<DataT>(fEz.Integral(p1z, p2z));
+  }
+
+  template <typename ElectricFields>
+  void integrateEFieldsTrapezoidal(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+  {
+    const DataT ezField = getEzField();
+
+    const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
+    const DataT fieldez0 = formulaStruct.evalEz(p1z, p1r, p1phi);
+    const DataT fieldephi0 = formulaStruct.evalEphi(p1z, p1r, p1phi);
+
+    const DataT fielder1 = formulaStruct.evalEr(p2z, p1r, p1phi);
+    const DataT fieldez1 = formulaStruct.evalEz(p2z, p1r, p1phi);
+    const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p1r, p1phi);
+
+    const DataT eZ0 = ezField + fieldez0;
+    const DataT eZ1 = ezField + fieldez1;
+
+    const int nSteps = 1; //getIntegrationSteps(); //mNumericalIntegrationSteps;
+    const DataT deltaX = (p2z - p1z) / nSteps;
+    //========trapezoidal rule==============
+    DataT fieldSumEr = 0;
+    DataT fieldSumEphi = 0;
+    DataT fieldSumEz = 0;
+
+    for (int i = 1; i < nSteps; ++i) {
+      const DataT xk1Tmp = p1z + i * deltaX;
+      const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
+      const DataT ezField1Denominator = 1 / ezField + ezField1;
+
+      fieldSumEr += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+      fieldSumEphi += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+      fieldSumEz += ezField1;
+    }
+
+    localIntErOverEz = deltaX * (fieldSumEr + static_cast<DataT>(0.5) * (fielder0 / eZ0 + fielder1 / eZ1));
+    localIntEPhiOverEz = deltaX * (fieldSumEphi + static_cast<DataT>(0.5) * (fieldephi0 / eZ0 + fieldephi1 / eZ1));
+    localIntDeltaEz = deltaX * (fieldSumEz + static_cast<DataT>(0.5) * (fieldez0 + fieldez1));
+  }
+
+  template <typename ElectricFields>
+  void integrateEFieldsSimpson(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+  {
+    //==========simpsons rule see: https://en.wikipedia.org/wiki/Simpson%27s_rule =============================
+    const DataT ezField = getEzField();
+
+    const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
+    const DataT fieldez0 = formulaStruct.evalEz(p1z, p1r, p1phi);
+    const DataT fieldephi0 = formulaStruct.evalEphi(p1z, p1r, p1phi);
+
+    const DataT fielder1 = formulaStruct.evalEr(p2z, p1r, p1phi);
+    const DataT fieldez1 = formulaStruct.evalEz(p2z, p1r, p1phi);
+    const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p1r, p1phi);
+
+    const DataT eZ0 = ezField + fieldez0;
+    const DataT eZ1 = ezField + fieldez1;
+
+    const int nSteps = 1; //getIntegrationSteps(); //mNumericalIntegrationSteps;
+    const DataT deltaX = (p2z - p1z) / nSteps;
+
+    DataT fieldSum1ErOverEz = 0;
+    DataT fieldSum2ErOverEz = 0;
+    DataT fieldSum1EphiOverEz = 0;
+    DataT fieldSum2EphiOverEz = 0;
+    DataT fieldSum1Ez = 0;
+    DataT fieldSum2Ez = 0;
+
+    for (int i = 1; i < nSteps; ++i) {
+      const DataT xk1Tmp = p1z + i * deltaX;
+      const DataT xk2 = xk1Tmp - static_cast<DataT>(0.5) * deltaX;
+
+      const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
+      const DataT ezField2 = formulaStruct.evalEz(xk2, p1r, p1phi);
+      const DataT ezField1Denominator = 1 / (ezField + ezField1);
+      const DataT ezField2Denominator = 1 / (ezField + ezField2);
+
+      fieldSum1ErOverEz += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+      fieldSum2ErOverEz += formulaStruct.evalEr(xk2, p1r, p1phi) * ezField2Denominator;
+
+      fieldSum1EphiOverEz += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
+      fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2, p1r, p1phi) * ezField2Denominator;
+
+      fieldSum1Ez += ezField1;
+      fieldSum2Ez += ezField2;
+    }
+    const DataT xk2N = (p2z - static_cast<DataT>(0.5) * deltaX);
+    const DataT ezField2 = formulaStruct.evalEz(xk2N, p1r, p1phi);
+    const DataT ezField2Denominator = 1 / (ezField + ezField2);
+    fieldSum2ErOverEz += formulaStruct.evalEr(xk2N, p1r, p1phi) * ezField2Denominator;
+    fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2N, p1r, p1phi) * ezField2Denominator;
+    fieldSum2Ez += ezField2;
+
+    const DataT deltaXSimpsonSixth = deltaX / 6;
+    localIntErOverEz = deltaXSimpsonSixth * (2 * fieldSum1ErOverEz + 4 * fieldSum2ErOverEz + fielder0 / eZ0 + fielder1 / eZ1);
+    localIntEPhiOverEz = deltaXSimpsonSixth * (2 * fieldSum1EphiOverEz + 4 * fieldSum2EphiOverEz + fieldephi0 / eZ0 + fieldephi1 / eZ1);
+    localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
+  }
 };
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
@@ -426,90 +541,20 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getDistortionsAnalytical(const
   DataT localIntErOverEz = 0;
   DataT localIntEPhiOverEz = 0;
   DataT localIntDeltaEz = 0;
-  const DataT ezField = getEzField();
 
-  if (mNumericalIntegrationStrategy == Root) {
-    // (void)p; -> supress warning of unused parameter
-    TF1 fErOverEz("fErOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEr(p1r, p1phi, static_cast<DataT>(x[0])) / (formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) + ezField)); }, p1z, p2z, 1);
-    localIntErOverEz = static_cast<DataT>(fErOverEz.Integral(p1z, p2z));
-
-    TF1 fEphiOverEz("fEPhiOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEphi(p1r, p1phi, static_cast<DataT>(x[0])) / (formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) + ezField)); }, p1z, p2z, 1);
-    localIntEPhiOverEz = static_cast<DataT>(fEphiOverEz.Integral(p1z, p2z));
-
-    TF1 fEz("fEZOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) - ezField); }, p1z, p2z, 1);
-    localIntDeltaEz = static_cast<DataT>(fEz.Integral(p1z, p2z));
-  } else {
-    const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
-    const DataT fieldez0 = formulaStruct.evalEz(p1z, p1r, p1phi);
-    const DataT fieldephi0 = formulaStruct.evalEphi(p1z, p1r, p1phi);
-
-    const DataT fielder1 = formulaStruct.evalEr(p2z, p1r, p1phi);
-    const DataT fieldez1 = formulaStruct.evalEz(p2z, p1r, p1phi);
-    const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p1r, p1phi);
-
-    const DataT eZ0 = ezField + fieldez0;
-    const DataT eZ1 = ezField + fieldez1;
-
-    const int nSteps = 1; //getIntegrationSteps(); //mNumericalIntegrationSteps;
-    const DataT deltaX = (p2z - p1z) / nSteps;
-
-    // trapezoidal integration
-    if (mNumericalIntegrationStrategy == Trapezoidal) {
-      //========trapezoidal rule==============
-      DataT fieldSumEr = 0;
-      DataT fieldSumEphi = 0;
-      DataT fieldSumEz = 0;
-      for (int i = 1; i < nSteps; ++i) {
-        const DataT xk1Tmp = p1z + i * deltaX;
-        const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
-        const DataT ezField1Denominator = 1 / ezField + ezField1;
-
-        fieldSumEr += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
-        fieldSumEphi += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
-        fieldSumEz += ezField1;
-      }
-      localIntErOverEz = deltaX * (fieldSumEr + static_cast<DataT>(0.5) * (fielder0 / eZ0 + fielder1 / eZ1));
-      localIntEPhiOverEz = deltaX * (fieldSumEphi + static_cast<DataT>(0.5) * (fieldephi0 / eZ0 + fieldephi1 / eZ1));
-      localIntDeltaEz = deltaX * (fieldSumEz + static_cast<DataT>(0.5) * (fieldez0 + fieldez1));
-    } else if (mNumericalIntegrationStrategy == Simpson) {
-      //==========simpsons rule see: https://en.wikipedia.org/wiki/Simpson%27s_rule =============================
-      DataT fieldSum1ErOverEz = 0;
-      DataT fieldSum2ErOverEz = 0;
-      DataT fieldSum1EphiOverEz = 0;
-      DataT fieldSum2EphiOverEz = 0;
-      DataT fieldSum1Ez = 0;
-      DataT fieldSum2Ez = 0;
-
-      for (int i = 1; i < nSteps; ++i) {
-        const DataT xk1Tmp = p1z + i * deltaX;
-        const DataT xk2 = xk1Tmp - static_cast<DataT>(0.5) * deltaX;
-
-        const DataT ezField1 = formulaStruct.evalEz(xk1Tmp, p1r, p1phi);
-        const DataT ezField2 = formulaStruct.evalEz(xk2, p1r, p1phi);
-        const DataT ezField1Denominator = 1 / (ezField + ezField1);
-        const DataT ezField2Denominator = 1 / (ezField + ezField2);
-
-        fieldSum1ErOverEz += formulaStruct.evalEr(xk1Tmp, p1r, p1phi) * ezField1Denominator;
-        fieldSum2ErOverEz += formulaStruct.evalEr(xk2, p1r, p1phi) * ezField2Denominator;
-
-        fieldSum1EphiOverEz += formulaStruct.evalEphi(xk1Tmp, p1r, p1phi) * ezField1Denominator;
-        fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2, p1r, p1phi) * ezField2Denominator;
-
-        fieldSum1Ez += ezField1;
-        fieldSum2Ez += ezField2;
-      }
-      const DataT xk2N = (p2z - static_cast<DataT>(0.5) * deltaX);
-      const DataT ezField2 = formulaStruct.evalEz(xk2N, p1r, p1phi);
-      const DataT ezField2Denominator = 1 / (ezField + ezField2);
-      fieldSum2ErOverEz += formulaStruct.evalEr(xk2N, p1r, p1phi) * ezField2Denominator;
-      fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2N, p1r, p1phi) * ezField2Denominator;
-      fieldSum2Ez += ezField2;
-
-      const DataT deltaXSimpsonSixth = deltaX / 6;
-      localIntErOverEz = deltaXSimpsonSixth * (2 * fieldSum1ErOverEz + 4 * fieldSum2ErOverEz + fielder0 / eZ0 + fielder1 / eZ1);
-      localIntEPhiOverEz = deltaXSimpsonSixth * (2 * fieldSum1EphiOverEz + 4 * fieldSum2EphiOverEz + fieldephi0 / eZ0 + fieldephi1 / eZ1);
-      localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
-    }
+  switch (mNumericalIntegrationStrategy) {
+    case Simpson:
+      integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+      break;
+    case Trapezoidal:
+      integrateEFieldsTrapezoidal(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+      break;
+    case Root:
+      integrateEFieldsRoot(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+      break;
+    default:
+      std::cout << "no matching case: Using Simpson" << std::endl;
+      integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
   }
 
   ddR = fC0 * localIntErOverEz + fC1 * localIntEPhiOverEz;

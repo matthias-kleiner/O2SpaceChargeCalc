@@ -14,16 +14,12 @@ endif(ROOT_FOUND)
 
 #find_package(ROOT 6.23 CONFIG REQUIRED)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-I${VC_ROOT}/include")
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -O3 -march=native")
-
 set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3")
-
 
 find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
-
 
 link_libraries(Vc::Vc)
 link_libraries(ROOT::Core)

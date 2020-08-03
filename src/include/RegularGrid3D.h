@@ -246,7 +246,7 @@ struct RegularGrid3D {
   DataT getInvSpacingZ() const { return mInvSpacing[FZ]; }
 
   // clamp coordinates to the grid
-  /// \param pos coordinates in x,y,z dimensions
+  /// \param pos coordinates in relative grid cooridnates
   template <size_t FDim>
   void clampToGrid(Vector<DataT, FDim>& pos) const
   {
@@ -258,6 +258,18 @@ struct RegularGrid3D {
       vecTmp(maskRight) = mMaxIndex.GetVector(j);
       pos.setVector(j, vecTmp);
     }
+  }
+
+  // clamp coordinates to the grid
+  /// \param pos coordinate
+  DataT clampToGrid(const DataT pos, const unsigned int dim) const
+  {
+    if (pos < mMin[dim]) {
+      return mMin[dim];
+    } else if (pos > mMin[dim] + getN(dim) / mInvSpacing[dim]) {
+      return mMin[dim] + getN(dim) / mInvSpacing[dim];
+    }
+    return pos;
   }
 
   DataT getXVertex(const size_t index) const

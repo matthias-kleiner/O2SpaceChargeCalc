@@ -18,38 +18,53 @@ int main(int argc, char const* argv[])
   omp_set_num_threads(nThreads);
 
   using DataT = float;
-  const unsigned int nGridR = 129;
-  const unsigned int nGridZ = 129;
-  const unsigned int nGridPhi = 180;
+  const unsigned int nGridR = 17;
+  const unsigned int nGridZ = 17;
+  const unsigned int nGridPhi = 90;
 
   O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcAnalytical;
   spaceCharge3DCalcAnalytical.setOmegaTauT1T2(0.32f, 1, 1);
-  spaceCharge3DCalcAnalytical.setIntegrationSteps(10);
+  spaceCharge3DCalcAnalytical.setIntegrationSteps(3);
 
   O2TPCSpaceCharge3DCalc<DataT, nGridR, nGridZ, nGridPhi> spaceCharge3DCalcNumerical;
   spaceCharge3DCalcNumerical.setOmegaTauT1T2(0.32f, 1, 1);
   spaceCharge3DCalcNumerical.setIntegrationSteps(3);
 
   AnalyticalFields<DataT> anaFields;
+
+
   const int maxIteration = 300;
   const DataT stoppingConvergence = 1e-8;
 
+  //==============================================================
+  //================ FILL BOUNDARY NUM ===========================
+  //==============================================================
   auto start = std::chrono::high_resolution_clock::now();
-  spaceCharge3DCalcNumerical.fillBoundaryAndChargeDensities(anaFields);
+  // spaceCharge3DCalcNumerical.fillBoundaryAndChargeDensities(anaFields);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> diff = end - start;
   std::cout << "Step 0: Fill Boundary and Charge Densities: " << diff.count() << std::endl;
 
+  //==============================================================
+  //================ POISSON SOLVER NUM ==========================
+  //==============================================================
   // start = std::chrono::high_resolution_clock::now();
   // spaceCharge3DCalcNumerical.poissonSolver(maxIteration, stoppingConvergence);
   // end = std::chrono::high_resolution_clock::now();
   // std::cout << "Step 1: Poisson solver: " << diff.count() << std::endl;
 
+  //==============================================================
+  //================ POISSON SOLVER NUM SET FROM FILE ============
+  //==============================================================
   TFile fPot(Form("Potential_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "READ");
   std::cout << "========= LOADING POTENTIAL: =========" << std::endl;
+  // spaceCharge3DCalcNumerical.dumpPotential(fPot);
   spaceCharge3DCalcNumerical.setPotentialFromFile(fPot);
   std::cout << "=========  POTENTIAL LOADED: ========= " << std::endl;
 
+  //==============================================================
+  //================ ELECTRIC FIELD NUMERICAL ====================
+  //==============================================================
   start = std::chrono::high_resolution_clock::now();
   std::cout << "=========  CALC EFIELD: =========" << std::endl;
   spaceCharge3DCalcNumerical.calcEField(); // calculate e field
@@ -63,22 +78,54 @@ int main(int argc, char const* argv[])
   // spaceCharge3DCalcNumerical.dumpElectricFields(fEField);
   // return 1;
 
+  //==============================================================
+  //================ LOCAL DISTORTIONS CORRECTIONS AND ===========
+  //==============================================================
   start = std::chrono::high_resolution_clock::now();
-  // spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
-  // spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields);  // local correction calculation
+  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
+  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields); // local correction calculation
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections analytical: " << diff.count() << std::endl;
 
-  const auto numFields = spaceCharge3DCalcNumerical.getNumericalFieldsInterpolator();
 
+  //==============================================================
+  //================ LOCAL DISTORTIONS CORRECTIONS NUM ===========
+  //==============================================================
+  const auto numFields = spaceCharge3DCalcNumerical.getNumericalFieldsInterpolator();
   start = std::chrono::high_resolution_clock::now();
   spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(false, numFields); // local distortion calculation
   spaceCharge3DCalcNumerical.calcLocalDistortionsCorrections(true, numFields);  // local correction calculation
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections numerical: " << diff.count() << std::endl;
-  // return 1;
+
+
+  //==============================================================
+  //================ GLOBAL DISTORTIONS ANALYTICAL ===============
+  //==============================================================
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcAnalytical.calcGlobalDistortions(anaFields);
+  end = std::chrono::high_resolution_clock::now();
+  TFile fGlobalDistAna(Form("GlobalDist_Ana_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
+  spaceCharge3DCalcAnalytical.dumpGlobalDistortions(fGlobalDistAna);
+  // spaceCharge3DCalcAnalytical.setGlobalDistortionsFromFile(fGlobalDistAna);
+  diff = end - start;
+  std::cout << "Step 4: global distortions and corrections analytical: " << diff.count() << std::endl;
+
+
+  //==============================================================
+  //================ GLOBAL DISTORTIONS NUMERICAL  ===============
+  //==============================================================
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcNumerical.calcGlobalDistortions(numFields);
+  end = std::chrono::high_resolution_clock::now();
+  TFile fGlobalDistNum(Form("GlobalDist_Num_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
+  spaceCharge3DCalcNumerical.dumpGlobalDistortions(fGlobalDistNum);
+  // spaceCharge3DCalcAnalytical.setGlobalDistortionsFromFile(fGlobalDistAna);
+  diff = end - start;
+  std::cout << "Step 4: global distortions and corrections numerical: " << diff.count() << std::endl;
+
 
   // dump to disk
   TFile fDebug(Form("debug_%i_%i_%i.root", nGridR, nGridZ, nGridPhi), "RECREATE");
@@ -89,6 +136,14 @@ int main(int argc, char const* argv[])
   DataT localcDistR{0};
   DataT localcDistZ{0};
   DataT localcDistRPhi{0};
+
+  DataT globalDistR{0};
+  DataT globalDistZ{0};
+  DataT globalDistRPhi{0};
+
+  DataT globalDistRNum{0};
+  DataT globalDistZNum{0};
+  DataT globalDistRPhiNum{0};
 
   DataT localcCorrR{0};
   DataT localcCorrZ{0};
@@ -116,6 +171,14 @@ int main(int argc, char const* argv[])
   tree.Branch("ldistrana", &localcDistR);
   tree.Branch("ldistzana", &localcDistZ);
   tree.Branch("ldistrphiana", &localcDistRPhi);
+
+  tree.Branch("distrana", &globalDistR);
+  tree.Branch("distzana", &globalDistZ);
+  tree.Branch("distrphiana", &globalDistRPhi);
+
+  tree.Branch("distrnum", &globalDistRNum);
+  tree.Branch("distznum", &globalDistZNum);
+  tree.Branch("distrphinum", &globalDistRPhiNum);
 
   tree.Branch("lcorrrana", &localcCorrR);
   tree.Branch("lcorrzana", &localcCorrZ);
@@ -195,6 +258,14 @@ int main(int argc, char const* argv[])
         localcCorrRNum = spaceCharge3DCalcNumerical.getLocalCorrR(indz, indr, indphi);
         localcCorrZNum = spaceCharge3DCalcNumerical.getLocalCorrZ(indz, indr, indphi);
         localcCorrRPhiNum = spaceCharge3DCalcNumerical.getLocalCorrRPhi(indz, indr, indphi);
+
+        // get global distortions
+        globalDistR = spaceCharge3DCalcAnalytical.getGlobalDistR(indz, indr, indphi);
+        globalDistZ = spaceCharge3DCalcAnalytical.getGlobalDistZ(indz, indr, indphi);
+        globalDistRPhi = spaceCharge3DCalcAnalytical.getGlobalDistRPhi(indz, indr, indphi);
+        globalDistRNum = spaceCharge3DCalcNumerical.getGlobalDistR(indz, indr, indphi);
+        globalDistZNum = spaceCharge3DCalcNumerical.getGlobalDistZ(indz, indr, indphi);
+        globalDistRPhiNum = spaceCharge3DCalcNumerical.getGlobalDistRPhi(indz, indr, indphi);
 
         // get numerically calculated Efield
         eZNum = spaceCharge3DCalcNumerical.getEz(indz, indr, indphi);

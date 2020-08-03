@@ -181,6 +181,9 @@ class O2TPCSpaceCharge3DCalc
   // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
   void calcGlobalDistortionsCorrections();
 
+  template <typename ElectricFields = AnalyticalFields<DataT>>
+  void calcGlobalDistortions(ElectricFields& formulaStruct);
+
   static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
   static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
   static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
@@ -222,6 +225,21 @@ class O2TPCSpaceCharge3DCalc
   DataT getLocalCorrRPhi(size_t iz, size_t ir, size_t iphi) const
   {
     return mLocalCorrdRPhi(iz, ir, iphi);
+  }
+
+  DataT getGlobalDistR(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mGlobalDistdR(iz, ir, iphi);
+  }
+
+  DataT getGlobalDistZ(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mGlobalDistdZ(iz, ir, iphi);
+  }
+
+  DataT getGlobalDistRPhi(size_t iz, size_t ir, size_t iphi) const
+  {
+    return mGlobalDistdRPhi(iz, ir, iphi);
   }
 
   DataT getEr(size_t iz, size_t ir, size_t iphi) const
@@ -291,7 +309,8 @@ class O2TPCSpaceCharge3DCalc
   /// numerical integration strategys
   enum IntegrationStrategy { Trapezoidal = 0,
                              Simpson = 1,
-                             Root = 2 };
+                             Root = 2,
+                             SimpsonExperimental = 3 };
 
   int dumpElectricFields(TFile& outf) const
   {
@@ -318,6 +337,21 @@ class O2TPCSpaceCharge3DCalc
     mPotential.initFromFile(inpf, "potential");
   }
 
+  int dumpGlobalDistortions(TFile& outf) const
+  {
+    const int er = mGlobalDistdR.storeValuesToFile(outf, "distR");
+    const int ez = mGlobalDistdZ.storeValuesToFile(outf, "distZ");
+    const int ephi = mGlobalDistdRPhi.storeValuesToFile(outf, "distRPhi");
+    return er + ez + ephi;
+  }
+
+  void setGlobalDistortionsFromFile(TFile& inpf)
+  {
+    mGlobalDistdR.initFromFile(inpf, "distR");
+    mGlobalDistdZ.initFromFile(inpf, "distZ");
+    mGlobalDistdRPhi.initFromFile(inpf, "distRPhi");
+  }
+
   void printPotential() const
   {
     std::cout << mPotential;
@@ -326,15 +360,15 @@ class O2TPCSpaceCharge3DCalc
  private:
   using ASolv = AliTPCPoissonSolver<DataT>;
 
-  static constexpr DataT mGridSpacingR = (ASolv::fgkOFCRadius - ASolv::fgkIFCRadius) / (Nr - 1); ///< grid spacing in r direction
-  static constexpr DataT mGridSpacingZ = ASolv::fgkTPCZ0 / (Nz - 1);                             ///< grid spacing in z direction
-  static constexpr DataT mGridSpacingPhi = 2 * M_PI / Nphi;                                      ///< grid spacing in phi direction // TODO CHANGE TO O2
-  static constexpr DataT mRMin = ASolv::fgkIFCRadius;                                            ///< min radius
-  static constexpr DataT mZMin = 0;                                                              ///< min z coordinate
-  static constexpr DataT mPhiMin = 0;                                                            ///< min phi coordinate
-  int mNumericalIntegrationStrategy = Simpson;                                                   ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
-  unsigned int mNumericalIntegrationSteps = 1;                                                   ///< number of intervalls during numerical integration are taken.
-  int mStepWidth = 1;                                                                            ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
+  static constexpr DataT mRMin = ASolv::fgkIFCRadius; ///< min radius
+  static constexpr DataT mZMin = ASolv::fgkZOffSet;   ///< min z coordinate
+  static constexpr DataT mPhiMin = 0;
+  static constexpr DataT mGridSpacingR = (ASolv::fgkOFCRadius - mRMin) / (Nr - 1); ///< grid spacing in r direction
+  static constexpr DataT mGridSpacingZ = (ASolv::fgkTPCZ0 - mZMin) / (Nz - 1);     ///< grid spacing in z direction
+  static constexpr DataT mGridSpacingPhi = 2 * M_PI / Nphi;                        ///< grid spacing in phi direction // TODO CHANGE TO O2                                                           ///< min phi coordinate
+  int mNumericalIntegrationStrategy = SimpsonExperimental;                         ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
+  unsigned int mNumericalIntegrationSteps = 1;                                     ///< number of intervalls during numerical integration are taken.
+  int mStepWidth = 1;                                                              ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
 
   // const size_t mNThreads{1};
 
@@ -352,6 +386,14 @@ class O2TPCSpaceCharge3DCalc
   RegularGrid mLocalCorrdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mLocalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mLocalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+
+  RegularGrid mGlobalDistdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid mGlobalDistdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid mGlobalDistdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+
+  RegularGrid mGlobalCorrdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid mGlobalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  RegularGrid mGlobalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
 
   RegularGrid mDensity{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
   RegularGrid mPotential{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
@@ -374,6 +416,22 @@ class O2TPCSpaceCharge3DCalc
     return mGrid3D.getInvSpacingZ();
   }
 
+  DataT regulateZ(const DataT pos)
+  {
+    return mGrid3D.clampToGrid(pos, 0);
+  }
+
+  DataT regulateR(const DataT pos)
+  {
+    return mGrid3D.clampToGrid(pos, 1);
+  }
+
+  // TODO make this circular
+  DataT regulatePhi(const DataT pos)
+  {
+    return mGrid3D.clampToGrid(pos, 2);
+  }
+
   /// calculate distortions or corrections analytical with electric fields
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcDistortions(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const;
@@ -386,7 +444,16 @@ class O2TPCSpaceCharge3DCalc
 
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void integrateEFieldsSimpson(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const;
+
+  template <typename ElectricFields = AnalyticalFields<DataT>>
+  void integrateEFieldsSimpsonExperimental(const DataT p1r, const DataT p2r, const DataT p1phi, const DataT p2phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const;
 };
+
+///
+/// ========================================================================================================
+///       Inline implementations of some methods
+/// ========================================================================================================
+///
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
@@ -504,6 +571,47 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpson(const 
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpsonExperimental(const DataT p1r, const DataT p2r, const DataT p1phi, const DataT p2phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+{
+  //==========simpsons rule see: https://en.wikipedia.org/wiki/Simpson%27s_rule =============================
+  const DataT ezField = getEzField();
+
+  const DataT fielder0 = formulaStruct.evalEr(p1z, p1r, p1phi);
+  const DataT fieldez0 = formulaStruct.evalEz(p1z, p1r, p1phi);
+  const DataT fieldephi0 = formulaStruct.evalEphi(p1z, p1r, p1phi);
+
+  const DataT fielder1 = formulaStruct.evalEr(p2z, p2r, p2phi);
+  const DataT fieldez1 = formulaStruct.evalEz(p2z, p2r, p2phi);
+  const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p2r, p2phi);
+
+  const DataT eZ0 = ezField + fieldez0;
+  const DataT eZ1 = ezField + fieldez1;
+
+  const unsigned int nSteps = mNumericalIntegrationSteps;
+  const DataT deltaX = (p2z - p1z) / nSteps;
+
+  DataT fieldSum1ErOverEz = 0;
+  DataT fieldSum2ErOverEz = 0;
+  DataT fieldSum1EphiOverEz = 0;
+  DataT fieldSum2EphiOverEz = 0;
+  DataT fieldSum1Ez = 0;
+  DataT fieldSum2Ez = 0;
+
+  const DataT xk2N = (p2z - static_cast<DataT>(0.5) * deltaX);
+  const DataT ezField2 = formulaStruct.evalEz(xk2N, 0.5 * (p1r + p2r), 0.5 * (p1phi + p2phi));
+  const DataT ezField2Denominator = 1 / (ezField + ezField2);
+  fieldSum2ErOverEz += formulaStruct.evalEr(xk2N, 0.5 * (p1r + p2r), 0.5 * (p1phi + p2phi)) * ezField2Denominator;
+  fieldSum2EphiOverEz += formulaStruct.evalEphi(xk2N, 0.5 * (p1r + p2r), 0.5 * (p1phi + p2phi)) * ezField2Denominator;
+  fieldSum2Ez += ezField2;
+
+  const DataT deltaXSimpsonSixth = deltaX / 6;
+  localIntErOverEz = deltaXSimpsonSixth * (2 * fieldSum1ErOverEz + 4 * fieldSum2ErOverEz + fielder0 / eZ0 + fielder1 / eZ1);
+  localIntEPhiOverEz = deltaXSimpsonSixth * (2 * fieldSum1EphiOverEz + 4 * fieldSum2EphiOverEz + fieldephi0 / eZ0 + fieldephi1 / eZ1);
+  localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename ElectricFields>
 void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct)
 {
 #pragma omp parallel for
@@ -563,24 +671,83 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1
   DataT localIntEPhiOverEz = 0;
   DataT localIntDeltaEz = 0;
 
-  switch (mNumericalIntegrationStrategy) {
-    case Simpson:
-      integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
-      break;
-    case Trapezoidal:
-      integrateEFieldsTrapezoidal(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
-      break;
-    case Root:
-      integrateEFieldsRoot(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
-      break;
-    default:
-      std::cout << "no matching case: Using Simpson" << std::endl;
-      integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+  const int iN = mNumericalIntegrationStrategy == SimpsonExperimental ? 4 : 1;
+  for (int i = 0; i < iN; ++i) {
+    switch (mNumericalIntegrationStrategy) {
+      case Simpson:
+        integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+        break;
+      case SimpsonExperimental:
+        integrateEFieldsSimpsonExperimental(p1r, p1r + ddR, p1phi, p1phi + ddRPhi, p1z, p2z + ddZ, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+        break;
+      case Trapezoidal:;
+        integrateEFieldsTrapezoidal(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+        break;
+      case Root:
+        integrateEFieldsRoot(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+        break;
+      default:
+        std::cout << "no matching case: Using Simpson" << std::endl;
+        integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+    }
+    ddR = fC0 * localIntErOverEz + fC1 * localIntEPhiOverEz;
+    ddRPhi = (fC0 * localIntEPhiOverEz - fC1 * localIntErOverEz) / p1r;
+    ddZ = -1 * localIntDeltaEz * ASolv::fgkdvdE;
   }
+}
 
-  ddR = fC0 * localIntErOverEz + fC1 * localIntEPhiOverEz;
-  ddRPhi = (fC0 * localIntEPhiOverEz - fC1 * localIntErOverEz) / p1r;
-  ddZ = -1 * localIntDeltaEz * ASolv::fgkdvdE;
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename ElectricFields>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(ElectricFields& formulaStruct)
+{
+  // loop over tpc volume and let the electron drift from each vertex tothe readout of the tpc
+  #pragma omp parallel for
+  for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
+    std::cout<<"iPhi: "<<iPhi<<std::endl;
+    for (size_t iR = 0; iR < Nr; ++iR) {
+      for (size_t iZ = 0; iZ < Nz - 1; ++iZ) {
+
+        DataT drDist = 0.0;
+        DataT dPhi = 0.0;
+        DataT dzDist = 0.0;
+
+        bool readoutNotreached = true;
+        int iter = 0;
+        while (readoutNotreached) {
+          const int iSteps = getIntegrationSteps();
+          const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
+          const DataT z1 = getZVertex(iZ + 1);
+          const DataT stepSize = (z1 - z0) / iSteps;
+
+          const DataT z0Tmp = z0 + dzDist + iter * stepSize;
+
+          if (z0Tmp + stepSize >= ASolv::fgkTPCZ0) { // set loop to exit if teh readout is reached
+            readoutNotreached = false;
+          }
+
+          const DataT z1Tmp = regulateZ(z0Tmp + stepSize);
+          const DataT radius = regulateR(getRVertex(iR) + drDist);
+          const DataT phi = regulatePhi(getPhiVertex(iPhi) + dPhi); // TODO phi doenst have to be regulated (circular)
+
+          DataT ddR = 0;
+          DataT ddPhi = 0;
+          DataT ddZ = 0;
+
+          calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
+
+          // add local distortion
+          drDist += ddR;
+          dPhi += ddPhi;
+          dzDist += ddZ;
+
+          ++iter;
+        }
+        mGlobalDistdR(iZ, iR, iPhi) = drDist;
+        mGlobalDistdRPhi(iZ, iR, iPhi) = dPhi * getRVertex(iR);
+        mGlobalDistdZ(iZ, iR, iPhi) = dzDist;
+      }
+    }
+  }
 }
 
 #endif

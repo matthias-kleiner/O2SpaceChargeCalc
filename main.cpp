@@ -32,7 +32,6 @@ int main(int argc, char const* argv[])
 
   AnalyticalFields<DataT> anaFields;
 
-
   const int maxIteration = 300;
   const DataT stoppingConvergence = 1e-8;
 
@@ -83,11 +82,10 @@ int main(int argc, char const* argv[])
   //==============================================================
   start = std::chrono::high_resolution_clock::now();
   spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(false, anaFields); // local distortion calculation
-  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields); // local correction calculation
+  spaceCharge3DCalcAnalytical.calcLocalDistortionsCorrections(true, anaFields);  // local correction calculation
   end = std::chrono::high_resolution_clock::now();
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections analytical: " << diff.count() << std::endl;
-
 
   //==============================================================
   //================ LOCAL DISTORTIONS CORRECTIONS NUM ===========
@@ -100,32 +98,63 @@ int main(int argc, char const* argv[])
   diff = end - start;
   std::cout << "Step 3: local distortions and corrections numerical: " << diff.count() << std::endl;
 
+  const auto anaLocalDistInterpolator = spaceCharge3DCalcAnalytical.getLocalDistInterpolator();
+  const auto anaLocalCorrInterpolator = spaceCharge3DCalcAnalytical.getLocalCorrInterpolator();
+
+  const auto numLocalDistInterpolator = spaceCharge3DCalcNumerical.getLocalDistInterpolator();
+  const auto numLocalCorrInterpolator = spaceCharge3DCalcNumerical.getLocalCorrInterpolator();
 
   //==============================================================
-  //================ GLOBAL DISTORTIONS ANALYTICAL ===============
+  //========== GLOBAL DISTORTIONS ANALYTICAL USING LOCAL DIST ====
   //==============================================================
   start = std::chrono::high_resolution_clock::now();
+  // spaceCharge3DCalcAnalytical.calcGlobalDistortions(anaLocalDistInterpolator);
   spaceCharge3DCalcAnalytical.calcGlobalDistortions(anaFields);
   end = std::chrono::high_resolution_clock::now();
   TFile fGlobalDistAna(Form("GlobalDist_Ana_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
   spaceCharge3DCalcAnalytical.dumpGlobalDistortions(fGlobalDistAna);
   // spaceCharge3DCalcAnalytical.setGlobalDistortionsFromFile(fGlobalDistAna);
   diff = end - start;
-  std::cout << "Step 4: global distortions and corrections analytical: " << diff.count() << std::endl;
-
+  std::cout << "Step 4: global distortions analytical: " << diff.count() << std::endl;
 
   //==============================================================
-  //================ GLOBAL DISTORTIONS NUMERICAL  ===============
+  //========== GLOBAL CORRECTIONS ANALYTICAL USING LOCAL CORR ====
+  //==============================================================
+  start = std::chrono::high_resolution_clock::now();
+  // spaceCharge3DCalcAnalytical.calcGlobalDistortions(anaLocalCorrInterpolator);
+  spaceCharge3DCalcAnalytical.calcGlobalCorrections(anaFields);
+  end = std::chrono::high_resolution_clock::now();
+  TFile fGlobalCorrAna(Form("GlobalCorr_Ana_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
+  spaceCharge3DCalcAnalytical.dumpGlobalCorrections(fGlobalCorrAna);
+  // spaceCharge3DCalcAnalytical.setGlobalCorrectionsFromFile(fGlobalCorrAna);
+  diff = end - start;
+  std::cout << "Step 4: global corrections analytical: " << diff.count() << std::endl;
+
+  //==============================================================
+  //========== GLOBAL DISTORTIONS NUMERICAL USING LOCAL DIST ====
   //==============================================================
   start = std::chrono::high_resolution_clock::now();
   spaceCharge3DCalcNumerical.calcGlobalDistortions(numFields);
+  // spaceCharge3DCalcNumerical.calcGlobalDistortions(numLocalDistInterpolator);
   end = std::chrono::high_resolution_clock::now();
   TFile fGlobalDistNum(Form("GlobalDist_Num_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
   spaceCharge3DCalcNumerical.dumpGlobalDistortions(fGlobalDistNum);
-  // spaceCharge3DCalcAnalytical.setGlobalDistortionsFromFile(fGlobalDistAna);
+  // spaceCharge3DCalcNumerical.setGlobalDistortionsFromFile(fGlobalDistNum);
   diff = end - start;
-  std::cout << "Step 4: global distortions and corrections numerical: " << diff.count() << std::endl;
+  std::cout << "Step 4: global distortions numerical: " << diff.count() << std::endl;
 
+  //==============================================================
+  //========== GLOBAL CORRECTIONS NUMERICAL ======================
+  //==============================================================
+  start = std::chrono::high_resolution_clock::now();
+  spaceCharge3DCalcNumerical.calcGlobalCorrections(numFields);
+  // spaceCharge3DCalcNumerical.calcGlobalDistortions(numLocalDistInterpolator);
+  end = std::chrono::high_resolution_clock::now();
+  TFile fGlobalCorrNum(Form("GlobalCorr_Num_%i_%i_%i.root", nGridZ, nGridR, nGridPhi), "RECREATE");
+  spaceCharge3DCalcNumerical.dumpGlobalCorrections(fGlobalCorrNum);
+  // spaceCharge3DCalcNumerical.setGlobalCorrectionsFromFile(fGlobalCorrNum);
+  diff = end - start;
+  std::cout << "Step 4: global corrections numerical: " << diff.count() << std::endl;
 
   // dump to disk
   TFile fDebug(Form("debug_%i_%i_%i.root", nGridR, nGridZ, nGridPhi), "RECREATE");
@@ -144,6 +173,14 @@ int main(int argc, char const* argv[])
   DataT globalDistRNum{0};
   DataT globalDistZNum{0};
   DataT globalDistRPhiNum{0};
+
+  DataT globalCorrR{0};
+  DataT globalCorrZ{0};
+  DataT globalCorrRPhi{0};
+
+  DataT globalCorrRNum{0};
+  DataT globalCorrZNum{0};
+  DataT globalCorrRPhiNum{0};
 
   DataT localcCorrR{0};
   DataT localcCorrZ{0};
@@ -179,6 +216,14 @@ int main(int argc, char const* argv[])
   tree.Branch("distrnum", &globalDistRNum);
   tree.Branch("distznum", &globalDistZNum);
   tree.Branch("distrphinum", &globalDistRPhiNum);
+
+  tree.Branch("corrrana", &globalCorrR);
+  tree.Branch("corrzana", &globalCorrZ);
+  tree.Branch("corrrphiana", &globalCorrRPhi);
+
+  tree.Branch("corrrnum", &globalCorrRNum);
+  tree.Branch("corrznum", &globalCorrZNum);
+  tree.Branch("corrrphinum", &globalCorrRPhiNum);
 
   tree.Branch("lcorrrana", &localcCorrR);
   tree.Branch("lcorrzana", &localcCorrZ);
@@ -266,6 +311,14 @@ int main(int argc, char const* argv[])
         globalDistRNum = spaceCharge3DCalcNumerical.getGlobalDistR(indz, indr, indphi);
         globalDistZNum = spaceCharge3DCalcNumerical.getGlobalDistZ(indz, indr, indphi);
         globalDistRPhiNum = spaceCharge3DCalcNumerical.getGlobalDistRPhi(indz, indr, indphi);
+
+        // get global corrections
+        globalCorrR = spaceCharge3DCalcAnalytical.getGlobalCorrR(indz, indr, indphi);
+        globalCorrZ = spaceCharge3DCalcAnalytical.getGlobalCorrZ(indz, indr, indphi);
+        globalCorrRPhi = spaceCharge3DCalcAnalytical.getGlobalCorrRPhi(indz, indr, indphi);
+        globalCorrRNum = spaceCharge3DCalcNumerical.getGlobalCorrR(indz, indr, indphi);
+        globalCorrZNum = spaceCharge3DCalcNumerical.getGlobalCorrZ(indz, indr, indphi);
+        globalCorrRPhiNum = spaceCharge3DCalcNumerical.getGlobalCorrRPhi(indz, indr, indphi);
 
         // get numerically calculated Efield
         eZNum = spaceCharge3DCalcNumerical.getEz(indz, indr, indphi);

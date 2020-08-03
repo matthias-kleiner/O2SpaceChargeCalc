@@ -32,6 +32,7 @@ struct AnalyticalFields {
   DataT parA{1e-5}; ///< parameter [0] of functions
   DataT parB{0.5};  ///< parameter [1] of functions
   DataT parC{1e-4}; ///< parameter [2] of functions
+  static constexpr unsigned int id = 0; ///< needed to distinguish between the differrent structs
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -110,7 +111,7 @@ template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
 struct NumericalFields {
   // using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
 
-  NumericalFields(const Grid3D& gridEr, const Grid3D& gridEz, const Grid3D& gridEphi) : mGridEr{gridEr}, mGridEz{gridEz}, mGridEphi{gridEphi} {};
+  NumericalFields(const Grid3D& gridErTmp, const Grid3D& gridEzTmp, const Grid3D& gridEphiTmp) : gridEr{gridErTmp}, gridEz{gridEzTmp}, gridEphi{gridEphiTmp} {};
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -118,7 +119,7 @@ struct NumericalFields {
   /// \return returns the function value for electric field Er for given coordinate
   DataT evalEr(DataT z, DataT r, DataT phi) const
   {
-    return mInterpolatorEr(z, r, phi);
+    return interpolatorEr(z, r, phi);
   }
 
   /// \param r r coordinate
@@ -127,7 +128,7 @@ struct NumericalFields {
   /// \return returns the function value for electric field Ez for given coordinate
   DataT evalEz(DataT z, DataT r, DataT phi) const
   {
-    return mInterpolatorEz(z, r, phi);
+    return interpolatorEz(z, r, phi);
   }
 
   /// \param r r coordinate
@@ -136,18 +137,63 @@ struct NumericalFields {
   /// \return returns the function value for electric field Ephi for given coordinate
   DataT evalEphi(DataT z, DataT r, DataT phi) const
   {
-    return mInterpolatorEphi(z, r, phi);
+    return interpolatorEphi(z, r, phi);
   }
 
-  const Grid3D& mGridEr{};   // adress to the data container of the grid
-  const Grid3D& mGridEz{};   // adress to the data container of the grid
-  const Grid3D& mGridEphi{}; // adress to the data container of the grid
-  const bool mCircularZ = false;
-  const bool mCircularR = false;
-  const bool mCircularPhi = true;
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEr{mGridEr, mCircularZ, mCircularR, mCircularPhi};
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEz{mGridEz, mCircularZ, mCircularR, mCircularPhi};
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorEphi{mGridEphi, mCircularZ, mCircularR, mCircularPhi};
+  const Grid3D& gridEr{};   // adress to the data container of the grid
+  const Grid3D& gridEz{};   // adress to the data container of the grid
+  const Grid3D& gridEphi{}; // adress to the data container of the grid
+  const bool circularZ = false;
+  const bool circularR = false;
+  const bool circularPhi = true;
+  TriCubicInterpolator<DataT, Grid3D> interpolatorEr{gridEr, circularZ, circularR, circularPhi};
+  TriCubicInterpolator<DataT, Grid3D> interpolatorEz{gridEz, circularZ, circularR, circularPhi};
+  TriCubicInterpolator<DataT, Grid3D> interpolatorEphi{gridEphi, circularZ, circularR, circularPhi};
+  static constexpr unsigned int id = 1; ///< needed to distinguish between the differrent structs
+};
+
+template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
+struct LocalDistCorr {
+
+  LocalDistCorr(const Grid3D& lDistCorrdR, const Grid3D& lDistCorrdZ, const Grid3D& lDistCorrdRPhi) : mDistCorrdR{lDistCorrdR}, mDistCorrdZ{lDistCorrdZ}, mDistCorrdRPhi{lDistCorrdRPhi} {};
+
+  /// \param r r coordinate
+  /// \param phi phi coordinate
+  /// \param z z coordinate
+  /// \return returns the function value for the local distortion or correction dR for given coordinate
+  DataT evaldR(DataT z, DataT r, DataT phi) const
+  {
+    return mInterpolatorDistCorrdR(z, r, phi);
+  }
+
+  /// \param r r coordinate
+  /// \param phi phi coordinate
+  /// \param z z coordinate
+  /// \return returns the function value for the local distortion or correction dZ for given coordinate
+  DataT evaldZ(DataT z, DataT r, DataT phi) const
+  {
+    return mInterpolatorDistCorrdZ(z, r, phi);
+  }
+
+  /// \param r r coordinate
+  /// \param phi phi coordinate
+  /// \param z z coordinate
+  /// \return returns the function value for the local distortion or correction dRPhi for given coordinate
+  DataT evaldRPhi(DataT z, DataT r, DataT phi) const
+  {
+    return mInterpolatorDistCorrdRPhi(z, r, phi);
+  }
+
+  const Grid3D& mDistCorrdR{};    // adress to the data container of the grid
+  const Grid3D& mDistCorrdZ{};    // adress to the data container of the grid
+  const Grid3D& mDistCorrdRPhi{}; // adress to the data container of the grid
+  const bool circularZ = false;
+  const bool circularR = false;
+  const bool circularPhi = true;
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdR{mDistCorrdR, circularZ, circularR, circularPhi};
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdZ{mDistCorrdZ, circularZ, circularR, circularPhi};
+  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdRPhi{mDistCorrdRPhi, circularZ, circularR, circularPhi};
+  static constexpr unsigned int id = 2; ///< needed to distinguish between the differrent structs
 };
 
 /// \tparam DataT the type of data which is used during the calculations
@@ -182,7 +228,7 @@ class O2TPCSpaceCharge3DCalc
   void calcGlobalDistortionsCorrections();
 
   template <typename ElectricFields = AnalyticalFields<DataT>>
-  void calcGlobalDistortions(ElectricFields& formulaStruct);
+  void calcGlobalDistortions(const ElectricFields& formulaStruct);
 
   static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
   static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
@@ -194,6 +240,18 @@ class O2TPCSpaceCharge3DCalc
   NumericalFields<DataT, RegularGrid> getNumericalFieldsInterpolator() const
   {
     NumericalFields<DataT, RegularGrid> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi);
+    return numFields;
+  }
+
+  LocalDistCorr<DataT, RegularGrid> getLocalDistInterpolator() const
+  {
+    LocalDistCorr<DataT, RegularGrid> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi);
+    return numFields;
+  }
+
+  LocalDistCorr<DataT, RegularGrid> getLocalCorrInterpolator() const
+  {
+    LocalDistCorr<DataT, RegularGrid> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi);
     return numFields;
   }
 
@@ -312,6 +370,12 @@ class O2TPCSpaceCharge3DCalc
                              Root = 2,
                              SimpsonExperimental = 3 };
 
+  // calculat the global distortions with interpolation of local distortions or by taking the electric field
+  enum GlobalDistortionType {
+    LocalDistortions = 0,
+    ElectricField = 1
+  };
+
   int dumpElectricFields(TFile& outf) const
   {
     const int er = mElectricFieldEr.storeValuesToFile(outf, "fieldEr");
@@ -369,10 +433,6 @@ class O2TPCSpaceCharge3DCalc
   int mNumericalIntegrationStrategy = SimpsonExperimental;                         ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
   unsigned int mNumericalIntegrationSteps = 1;                                     ///< number of intervalls during numerical integration are taken.
   int mStepWidth = 1;                                                              ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
-
-  // const size_t mNThreads{1};
-
-  // TriCubicInterpolator<float,RegularGrid>::mNThreads = mNThreads;
 
   DataT fC0 = 0; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
   DataT fC1 = 0; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
@@ -447,6 +507,20 @@ class O2TPCSpaceCharge3DCalc
 
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void integrateEFieldsSimpsonExperimental(const DataT p1r, const DataT p2r, const DataT p1phi, const DataT p2phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const;
+
+  void processGlobalDist(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const AnalyticalFields<DataT>& formulaStruct) const{
+    calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
+  }
+
+  void processGlobalDist(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const NumericalFields<DataT, RegularGrid>& formulaStruct) const{
+    calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
+  }
+
+  void processGlobalDist(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const LocalDistCorr<DataT, RegularGrid>& formulaStruct) const{
+    ddR = formulaStruct.evaldR(z0Tmp, radius, phi);
+    ddZ = formulaStruct.evaldZ(z0Tmp, radius, phi);
+    ddRPhi = formulaStruct.evaldRPhi(z0Tmp, radius, phi) / radius;
+  }
 };
 
 ///
@@ -698,12 +772,12 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(ElectricFields& formulaStruct)
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const ElectricFields& formulaStruct)
 {
-  // loop over tpc volume and let the electron drift from each vertex tothe readout of the tpc
-  #pragma omp parallel for
+// loop over tpc volume and let the electron drift from each vertex tothe readout of the tpc
+#pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-    std::cout<<"iPhi: "<<iPhi<<std::endl;
+    std::cout << "iPhi: " << iPhi << std::endl;
     for (size_t iR = 0; iR < Nr; ++iR) {
       for (size_t iZ = 0; iZ < Nz - 1; ++iZ) {
 
@@ -714,10 +788,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(Electric
         bool readoutNotreached = true;
         int iter = 0;
         while (readoutNotreached) {
-          const int iSteps = getIntegrationSteps();
           const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
           const DataT z1 = getZVertex(iZ + 1);
-          const DataT stepSize = (z1 - z0) / iSteps;
+          const DataT stepSize = formulaStruct.id == 2 ? (z1 - z0) : (z1 - z0) / getIntegrationSteps();
 
           const DataT z0Tmp = z0 + dzDist + iter * stepSize;
 
@@ -733,7 +806,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(Electric
           DataT ddPhi = 0;
           DataT ddZ = 0;
 
-          calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
+          // get the distortion from interpolation of local distortions or electric field
+          processGlobalDist(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
 
           // add local distortion
           drDist += ddR;
@@ -749,5 +823,4 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(Electric
     }
   }
 }
-
 #endif

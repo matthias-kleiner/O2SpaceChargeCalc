@@ -26,6 +26,9 @@
 #include <omp.h>
 #endif
 
+// temporary for nearest neighbour search
+#include "GeometricalTools/NearestNeighborQuery.h"
+
 template <typename DataT = float>
 struct AnalyticalFields {
 
@@ -153,9 +156,9 @@ struct NumericalFields {
 };
 
 template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
-struct LocalDistCorr {
+struct DistCorrInterpolator {
 
-  LocalDistCorr(const Grid3D& lDistCorrdR, const Grid3D& lDistCorrdZ, const Grid3D& lDistCorrdRPhi) : mDistCorrdR{lDistCorrdR}, mDistCorrdZ{lDistCorrdZ}, mDistCorrdRPhi{lDistCorrdRPhi} {};
+  DistCorrInterpolator(const Grid3D& lDistCorrdR, const Grid3D& lDistCorrdZ, const Grid3D& lDistCorrdRPhi) : mDistCorrdR{lDistCorrdR}, mDistCorrdZ{lDistCorrdZ}, mDistCorrdRPhi{lDistCorrdRPhi} {};
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -233,6 +236,9 @@ class O2TPCSpaceCharge3DCalc
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcGlobalCorrections(const ElectricFields& formulaStruct);
 
+  // calculate global distortions using the global corrections RENAME NAME
+  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, RegularGrid>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05);
+
   static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
   static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
   static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
@@ -246,15 +252,27 @@ class O2TPCSpaceCharge3DCalc
     return numFields;
   }
 
-  LocalDistCorr<DataT, RegularGrid> getLocalDistInterpolator() const
+  DistCorrInterpolator<DataT, RegularGrid> getLocalDistInterpolator() const
   {
-    LocalDistCorr<DataT, RegularGrid> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi);
+    DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi);
     return numFields;
   }
 
-  LocalDistCorr<DataT, RegularGrid> getLocalCorrInterpolator() const
+  DistCorrInterpolator<DataT, RegularGrid> getLocalCorrInterpolator() const
   {
-    LocalDistCorr<DataT, RegularGrid> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi);
+    DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi);
+    return numFields;
+  }
+
+  DistCorrInterpolator<DataT, RegularGrid> getGlobalDistInterpolator() const
+  {
+    DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalDistdR, mGlobalDistdZ, mGlobalDistdRPhi);
+    return numFields;
+  }
+
+  DistCorrInterpolator<DataT, RegularGrid> getGlobalCorrInterpolator() const
+  {
+    DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalCorrdR, mGlobalCorrdZ, mGlobalCorrdRPhi);
     return numFields;
   }
 
@@ -551,7 +569,7 @@ class O2TPCSpaceCharge3DCalc
     calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
   }
 
-  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const LocalDistCorr<DataT, RegularGrid>& formulaStruct) const
+  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const DistCorrInterpolator<DataT, RegularGrid>& formulaStruct) const
   {
     ddR = formulaStruct.evaldR(z0Tmp, radius, phi);
     ddZ = formulaStruct.evaldZ(z0Tmp, radius, phi);
@@ -863,7 +881,7 @@ template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
 void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const ElectricFields& formulaStruct)
 {
-  #pragma omp parallel for
+#pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
     for (size_t iR = 0; iR < Nr; ++iR) {
       DataT drCorr = 0;
@@ -898,6 +916,144 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const El
         mGlobalCorrdR(iZ - 1, iR, iPhi) = drCorr;
         mGlobalCorrdRPhi(iZ - 1, iR, iPhi) = dPhiCorr * getRVertex(iR);
         mGlobalCorrdZ(iZ - 1, iR, iPhi) = dzCorr;
+      }
+    }
+  }
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, RegularGrid>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi)
+{
+  // store all values here for kdtree
+  const int nPoints = Nz * Nr * Nphi;
+  std::vector<gte::PositionSite<3, DataT>> sites;
+  sites.reserve(nPoints);
+
+  for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
+    for (unsigned int iR = 0; iR < Nr; ++iR) {
+      for (unsigned int iZ = 0; iZ < Nz; ++iZ) {
+        const DataT radius = getRVertex(iR);
+        const DataT z = getZVertex(iZ);
+        const DataT phi = getPhiVertex(iPhi);
+
+        const DataT globalCorrR = mGlobalCorrdR(iZ, iR, iPhi);
+        const DataT globalCorrRPhi = mGlobalCorrdRPhi(iZ, iR, iPhi);
+        const DataT globalCorrZ = mGlobalCorrdZ(iZ, iR, iPhi);
+
+        const DataT posRCorr = radius + globalCorrR; // position of global correction
+        const DataT posPhiCorr = regulatePhi(phi + globalCorrRPhi / radius);
+        const DataT posZCorr = z + globalCorrZ;
+
+        if (posRCorr >= mRMin && posRCorr <= ASolv::fgkOFCRadius && posZCorr >= mZMin && posZCorr <= ASolv::fgkTPCZ0) {
+          const std::array<DataT, 3> position{(posZCorr - mZMin) * getInvSpacingZ(), (posRCorr - mRMin) * getInvSpacingR(), (posPhiCorr - mPhiMin) * getInvSpacingPhi()};
+          const std::array<unsigned int, 3> positionIndex{iZ, iR, iPhi};
+          const gte::PositionSite<3, DataT> siteTmp(position, positionIndex);
+          sites.emplace_back(siteTmp);
+        }
+      }
+    }
+  }
+
+  const int maxLeafSize = 10;
+  const int maxLevel = 10;
+  gte::NearestNeighborQuery<3, float, gte::PositionSite<3, float>> kdTree(sites, maxLeafSize, maxLevel);
+
+  #pragma omp parallel for
+  for (unsigned int iZ = 0; iZ < Nz; ++iZ) {
+    for (unsigned int iR = 0; iR < Nr; ++iR) {
+      for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
+
+        // find nearest neighbour
+        const DataT radius = getRVertex(iR);
+        const DataT z = getZVertex(iZ);
+        const DataT phi = getPhiVertex(iPhi);
+
+        const std::array<DataT, 3> valuesQuery{(z - mZMin) * getInvSpacingZ(), (radius - mRMin) * getInvSpacingR(), (phi - mPhiMin) * getInvSpacingPhi()};
+        const gte::Vector<3, DataT> point(valuesQuery);
+        const DataT radiusSearch = 3; // larger radius -> more cpu time
+
+        const int MaxNeighbors = 1;
+        std::array<int, MaxNeighbors> neighbors{};
+        const int nNeighbours = kdTree.FindNeighbors<MaxNeighbors>(point, radiusSearch, neighbors);
+
+        if (nNeighbours == 0) {
+          std::cout << "no Neighbour found :( use larger search radius!" << std::endl;
+          continue;
+        }
+
+        const unsigned int index = neighbors[0];
+        const DataT nearestZ = sites[index].position[0] * mGridSpacingZ + mZMin;
+        const DataT nearestR = sites[index].position[1] * mGridSpacingR + mRMin;
+        const DataT nearestPhi = sites[index].position[2] * mGridSpacingPhi + mPhiMin;
+
+        const unsigned int nearestiZ = sites[index].index[0];
+        const unsigned int nearestiR = sites[index].index[1];
+        const unsigned int nearestiPhi = sites[index].index[2];
+
+        //start algorithm: use tricubic upsampling to numerically approach the query point
+        // 1. calculate difference from nearest point to query point with stepwidth factor x
+        const DataT rStepWidth = static_cast<DataT>(0.1);
+        DataT stepR = (radius - nearestR) * rStepWidth;
+        const DataT zStepWidth = static_cast<DataT>(0.1);
+        DataT stepZ = (z - nearestZ) * zStepWidth;
+        const DataT phiStepWidth = static_cast<DataT>(0.1);
+        DataT stepPhi = (phi - nearestPhi) * phiStepWidth;
+
+        // needed to check for convergence
+        DataT lastCorrdR = std::numeric_limits<DataT>::max();
+        DataT lastCorrdZ = std::numeric_limits<DataT>::max();
+        DataT lastCorrdRPhi = std::numeric_limits<DataT>::max();
+
+        int count = 0;
+
+        DataT corrdR = 0;
+        DataT corrdRPhi = 0;
+        DataT corrdZ = 0;
+
+        for(int iter = 0; iter<maxIter; ++iter){
+          // 2. get new points coordinates
+          const DataT rPos = getRVertex(nearestiR) + stepR;
+          const DataT zPos = getZVertex(nearestiZ) + stepZ;
+          const DataT phiPos = getPhiVertex(nearestiPhi) + stepPhi;
+
+          corrdR = globCorr.evaldR(zPos, rPos, phiPos);
+          const DataT rpos = rPos + corrdR;
+
+          const DataT corrRPhi = globCorr.evaldRPhi(zPos, rPos, phiPos);
+          corrdRPhi = corrRPhi / rPos * rpos;
+          const DataT phipos = phiPos + corrRPhi / rPos;
+
+          corrdZ = globCorr.evaldZ(zPos, rPos, phiPos);
+          const DataT zpos = zPos + corrdZ;
+
+          const DataT distanceR = radius - rpos;
+          const DataT distanceZ = z - zpos;
+          const DataT distancePhi = phi - phipos;
+          stepR += distanceR * rStepWidth;
+          stepZ += distanceZ * zStepWidth;
+          stepPhi += distancePhi * phiStepWidth;
+
+          const DataT totaldistRDiv = lastCorrdR == 0 ? 0 : 1 - std::abs(distanceR / lastCorrdR); // should be larger than 0
+          const bool checkR = totaldistRDiv <= convR; // if the improvemnt in distance is smaller than changeRFactor set the flag
+
+          const DataT totaldistZDiv = lastCorrdZ == 0 ? 0 : 1 - std::abs(distanceZ / lastCorrdZ); // should be larger than 0
+          const bool checkZ = totaldistZDiv <= convZ; // if the improvemnt in distance is smaller than changeRFactor set the flag
+
+          const DataT totaldistPhiDiv = lastCorrdRPhi == 0 ? 0 : 1 - std::abs(distancePhi / lastCorrdRPhi); // should be larger than 0
+          const bool checkPhi = totaldistPhiDiv <= convPhi; // if the improvemnt in distance is smaller than changeRFactor set the flag
+
+          if (checkR && checkZ && checkPhi) {
+            break;
+          }
+
+          lastCorrdR = distanceR;
+          lastCorrdZ = distanceZ;
+          lastCorrdRPhi = distancePhi;
+          ++count;
+        }
+        mGlobalDistdR(iZ, iR, iPhi) = -corrdR;
+        mGlobalDistdRPhi(iZ, iR, iPhi) = -corrdRPhi;
+        mGlobalDistdZ(iZ, iR, iPhi) = -corrdZ;
       }
     }
   }

@@ -2,6 +2,9 @@
 #define AnalyticalFields_H
 
 #include <functional>
+#include <cmath>
+#include "RegularGrid3D.h"
+#include "TriCubic.h"
 
 template <typename DataT = float>
 struct AnalyticalFields {
@@ -138,27 +141,27 @@ struct DistCorrInterpolator {
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dR for given coordinate
-  DataT evaldR(DataT z, DataT r, DataT phi) const
+  DataT evaldR(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdR(z, r, phi);
+    return mInterpolatorDistCorrdR(z, r, phi, safe);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dZ for given coordinate
-  DataT evaldZ(DataT z, DataT r, DataT phi) const
+  DataT evaldZ(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdZ(z, r, phi);
+    return mInterpolatorDistCorrdZ(z, r, phi, safe);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dRPhi for given coordinate
-  DataT evaldRPhi(DataT z, DataT r, DataT phi) const
+  DataT evaldRPhi(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdRPhi(z, r, phi);
+    return mInterpolatorDistCorrdRPhi(z, r, phi, safe);
   }
 
   const Grid3D& mDistCorrdR{};    // adress to the data container of the grid

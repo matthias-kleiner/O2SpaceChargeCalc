@@ -28,7 +28,7 @@ class TriCubicInterpolator
  public:
   /// Constructor for a tricubic interpolator
   /// \param gridData memory adress of the 3D-Grid struct
-  TriCubicInterpolator(const Grid3D& gridData, const bool circularX = false, const bool circularY = false, const bool circularZ = false) : mGridData{gridData}, mCircularX(circularX), mCircularY(circularY), mCircularZ(circularZ){};
+  TriCubicInterpolator(const Grid3D& gridData, const bool circularX = false, const bool circularY = false, const bool circularZ = false) : mGridData{gridData}, mCircular{{static_cast<int>(circularX), static_cast<int>(circularY), static_cast<int>(circularZ)}} {};
 
   // interpolate value at given coordinate
   /// \param x x coordinate
@@ -155,14 +155,11 @@ class TriCubicInterpolator
   static constexpr unsigned int FZ = Grid3D::getFZ();    // index for z coordinate
 
   const Grid3D& mGridData{}; // adress to the data container of the grid
-
-  const bool mCircularX{}; ///< sets circular padding in x dimension
-  const bool mCircularY{}; ///< sets circular padding in y dimension
-  const bool mCircularZ{}; ///< sets circular padding in z dimension
+  const Vector<int, 3> mCircular{};
 
   inline static thread_local const int mThreadnum{omp_get_thread_num()}; ///< save for each thread the thread number to get fast access to the correct array
   const int mNThreads{omp_get_max_threads()};
-  
+
   std::unique_ptr<Vector<DataT, 64>[]> mCoefficients = std::make_unique<Vector<DataT, 64>[]>(mNThreads);              ///< coefficients needed to interpolate a value
   std::unique_ptr<Vector<unsigned int, FDim>[]> mLastInd = std::make_unique<Vector<unsigned int, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for one-the last cell are stored)
   std::unique_ptr<bool[]> mInitialized = std::make_unique<bool[]>(mNThreads);                                         ///< sets the flag if the coefficients are evaluated at least once
@@ -185,7 +182,7 @@ class TriCubicInterpolator
   void getDataIndexNonCircularArray(const int index0, const int dim, int arr[]) const;
 
   // this helps to get circular and non circular padding indices
-  int getRegulatedDelta(const int index0, const int delta, const int dim, const int offs) const
+  int getRegulatedDelta(const int index0, const int delta, const unsigned int dim, const int offs) const
   {
     const int regulatedDelta = mGridData.isIndexInGrid(index0 + delta, dim) ? delta : offs;
     return regulatedDelta;
@@ -208,7 +205,6 @@ class TriCubicInterpolator
 ///       Inline implementations of some methods
 /// ========================================================================================================
 ///
-
 
 template <typename DataT, typename Grid3D>
 DataT TriCubicInterpolator<DataT, Grid3D>::evalDerivative(const DataT dx, const DataT dy, const DataT dz, const size_t derx, const size_t dery, const size_t derz) const
@@ -249,9 +245,9 @@ void TriCubicInterpolator<DataT, Grid3D>::calcCoefficients(const unsigned int ix
   int deltaZ[4]{};
 
   // set padding type: circular or standard
-  mCircularX ? getDataIndexCircularArray(ix, FX, deltaX) : getDataIndexNonCircularArray(ix, FX, deltaX);
-  mCircularY ? getDataIndexCircularArray(iy, FY, deltaY) : getDataIndexNonCircularArray(iy, FY, deltaY);
-  mCircularZ ? getDataIndexNonCircularArray(iz, FZ, deltaZ) : getDataIndexNonCircularArray(iz, FZ, deltaZ);
+  mCircular[0] ? getDataIndexCircularArray(ix, FX, deltaX) : getDataIndexNonCircularArray(ix, FX, deltaX);
+  mCircular[1] ? getDataIndexCircularArray(iy, FY, deltaY) : getDataIndexNonCircularArray(iy, FY, deltaY);
+  mCircular[2] ? getDataIndexCircularArray(iz, FZ, deltaZ) : getDataIndexNonCircularArray(iz, FZ, deltaZ);
 
   // indices to datat storage
   const size_t i_x_y_z = mGridData.getDataIndex(ix, iy, iz);
@@ -469,12 +465,14 @@ DataT TriCubicInterpolator<DataT, Grid3D>::interpolate(const Vector<DataT, 3>& p
 template <typename DataT, typename Grid3D>
 const Vector<DataT, 3> TriCubicInterpolator<DataT, Grid3D>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
 {
-  const auto minGrid = mGridData.getGridMin();                      // vector containing the min x,y,z value of the grid
-  const auto invSpacing = mGridData.getInvSpacing();                // vector containing the grid spacing for dim x,y,z
-  Vector<DataT, FDim> posRel{(coordinates - minGrid) * invSpacing}; // needed for the grid index
+  Vector<DataT, FDim> posRel{(coordinates - mGridData.getGridMin()) * mGridData.getInvSpacing()}; // needed for the grid index
 
   if (safe) {
-    mGridData.clampToGrid(posRel);
+    mGridData.clampToGridCircular(posRel, mCircular);
+    mGridData.clampToGrid(posRel, mCircular);
+  }
+  else{
+    mGridData.checkStability(posRel, mCircular);
   }
 
   const unsigned int ix = static_cast<unsigned int>(posRel[FX]);

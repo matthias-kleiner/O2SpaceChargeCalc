@@ -132,7 +132,7 @@ struct RegularGrid3D {
   static constexpr unsigned int getFZ() { return FZ; }
 
   /// \return returns the minimum coordinates of the grid in all dimensions
-  Vector<DataT, 3> getGridMin() const { return mMin; }
+  const Vector<DataT, 3>& getGridMin() const { return mMin; }
   DataT getGridMinX() const { return mMin[FX]; }
   DataT getGridMinY() const { return mMin[FY]; }
   DataT getGridMinZ() const { return mMin[FZ]; }
@@ -142,7 +142,7 @@ struct RegularGrid3D {
   DataT getGridMaxZ() const { return mMin[FZ] + getNZ() / getInvSpacingZ(); }
 
   /// \return returns the inversed spacing of the grid for all dimensions
-  Vector<DataT, 3> getInvSpacing() const { return mInvSpacing; }
+  const Vector<DataT, 3>& getInvSpacing() const { return mInvSpacing; }
   DataT getInvSpacingX() const { return mInvSpacing[FX]; }
   DataT getInvSpacingY() const { return mInvSpacing[FY]; }
   DataT getInvSpacingZ() const { return mInvSpacing[FZ]; }
@@ -150,15 +150,62 @@ struct RegularGrid3D {
   // clamp coordinates to the grid
   /// \param pos coordinates in relative grid cooridnates
   template <size_t FDim>
-  void clampToGrid(Vector<DataT, FDim>& pos) const
+  void clampToGrid(Vector<DataT, FDim>& relPos, const Vector<int, FDim>& circular) const
   {
-    for (size_t j = 0; j < pos.GetvectorsCount(); ++j) {
-      auto vecTmp = pos.GetVector(j);
+    for (size_t j = 0; j < relPos.GetvectorsCount(); ++j) {
+      auto vecTmp = relPos.GetVector(j);
       const auto maskLeft = vecTmp < 0;
-      const auto maskRight = vecTmp > mMaxIndex.GetVector(j);
+      const auto maskRight = vecTmp > (mMaxIndex.GetVector(j) + simd_cast<Vc::Vector<DataT>>(circular.GetVector(j)) );
+      // TODO optimize for numerical stabilty (e.g. -0.0000001 values)
       vecTmp(maskLeft) = Vc::Vector<DataT>::Zero();
       vecTmp(maskRight) = mMaxIndex.GetVector(j);
-      pos.setVector(j, vecTmp);
+      relPos.setVector(j, vecTmp);
+    }
+  }
+
+  DataT clampToGridCircular(DataT relPos, const unsigned int dim) const
+  {
+    while (relPos < 0) {
+      relPos += FNdim[dim];
+    }
+    while (relPos > FNdim[dim]) {
+      relPos -= FNdim[dim];
+    }
+    return relPos;
+  }
+
+  template <size_t FDim>
+  void clampToGridCircular(Vector<DataT, FDim>& relPos, const Vector<int, FDim>& circular) const
+  {
+    for (size_t j = 0; j < relPos.GetvectorsCount(); ++j) {
+      auto vecTmp = (relPos.GetVector(j));
+      auto vecTmp2 = simd_cast<Vc::Vector<DataT>>(circular.GetVector(j));
+      auto vecTmp3 = simd_cast<Vc::Vector<DataT>>( FNdim.GetVector(j) );
+      while ( (vecTmp * vecTmp2 < 0).count() > 0) {
+        vecTmp = vecTmp + vecTmp3 * vecTmp2;
+      }
+      while ( (vecTmp * vecTmp2 > vecTmp3).count() > 0 ) {
+        vecTmp = vecTmp - vecTmp3 * vecTmp2;
+      }
+      // numerical stability check
+      vecTmp(vecTmp * vecTmp2 == vecTmp3) = Vc::Vector<DataT>::Zero();
+
+      relPos.setVector(j, vecTmp);
+    }
+  }
+
+  template <size_t FDim>
+  void checkStability(Vector<DataT, FDim>& relPos, const Vector<int, FDim>& circular) const
+  {
+    for (size_t j = 0; j < relPos.GetvectorsCount(); ++j) {
+      auto vecTmp = (relPos.GetVector(j));
+      auto vecTmp2 = simd_cast<Vc::Vector<DataT>>(circular.GetVector(j));
+      auto vecTmp3 = simd_cast<Vc::Vector<DataT>>( FNdim.GetVector(j) );
+
+      // numerical stability check
+      vecTmp(vecTmp * vecTmp2 == vecTmp3) = Vc::Vector<DataT>::Zero();
+
+      relPos.setVector(j, vecTmp);
     }
   }
 
@@ -217,7 +264,7 @@ struct RegularGrid3D {
   const Vector<DataT, FDim> mMin{};                              //! min positions of grid
   const Vector<DataT, FDim> mInvSpacing{};                       //! inverse spacing of grid
   const Vector<DataT, FDim> mMaxIndex{{Nx - 1, Ny - 1, Nz - 1}}; //! max index which is on the grid in all dimensions
-  static constexpr size_t FNdim[FDim]{Nx, Ny, Nz};
+  inline static Vector<int, FDim> FNdim{ {Nx, Ny, Nz} };
 
   DataT listXVertices[Nx]{};
   DataT listYVertices[Ny]{};

@@ -22,6 +22,7 @@
 
 // Root includes
 #include "TF1.h" /// for numerical intergration only
+#include "TTree.h"
 
 #ifdef WITH_OPENMP
 #include <omp.h>
@@ -74,35 +75,55 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
   static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
   static constexpr DataT getEzField() { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
-  // constexpr DataT getRMin() const { return ASolv::fgkIFCRadius; }
+
+  static constexpr DataT getRMin() { return mRMin; }
+  static constexpr DataT getZMin() { return mZMin; }
+  static constexpr DataT getRMax() { return mGridSpacingR * (Nr - 1) + mRMin; };
+  static constexpr DataT getZMax() { return mGridSpacingZ * (Nz - 1) + mZMin; }
+
   const RegularGrid& getGrid3D() const { return mGrid3D; }
 
   NumericalFields<DataT, RegularGrid> getNumericalFieldsInterpolator() const
   {
+    if (!mIsEfieldSet) {
+      std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
+    }
     NumericalFields<DataT, RegularGrid> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi);
     return numFields;
   }
 
   DistCorrInterpolator<DataT, RegularGrid> getLocalDistInterpolator() const
   {
+    if (!mIsLocalDistSet) {
+      std::cout << "============== local distortions not set! returning ==============" << std::endl;
+    }
     DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi);
     return numFields;
   }
 
   DistCorrInterpolator<DataT, RegularGrid> getLocalCorrInterpolator() const
   {
+    if (!mIsLocalCorrSet) {
+      std::cout << "============== local corrections not set! returning ==============" << std::endl;
+    }
     DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi);
     return numFields;
   }
 
   DistCorrInterpolator<DataT, RegularGrid> getGlobalDistInterpolator() const
   {
+    if (!mIsGlobalDistSet) {
+      std::cout << "============== global distortions not set! returning ==============" << std::endl;
+    }
     DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalDistdR, mGlobalDistdZ, mGlobalDistdRPhi);
     return numFields;
   }
 
   DistCorrInterpolator<DataT, RegularGrid> getGlobalCorrInterpolator() const
   {
+    if (!mIsGlobalCorrSet) {
+      std::cout << "============== global corrections not set! returning ==============" << std::endl;
+    }
     DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalCorrdR, mGlobalCorrdZ, mGlobalCorrdRPhi);
     return numFields;
   }
@@ -245,6 +266,10 @@ class O2TPCSpaceCharge3DCalc
 
   int dumpElectricFields(TFile& outf) const
   {
+    if (!mIsEfieldSet) {
+      std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
+      return 0;
+    }
     const int er = mElectricFieldEr.storeValuesToFile(outf, "fieldEr");
     const int ez = mElectricFieldEz.storeValuesToFile(outf, "fieldEz");
     const int ephi = mElectricFieldEphi.storeValuesToFile(outf, "fieldEphi");
@@ -256,6 +281,7 @@ class O2TPCSpaceCharge3DCalc
     mElectricFieldEr.initFromFile(inpf, "fieldEr");
     mElectricFieldEz.initFromFile(inpf, "fieldEz");
     mElectricFieldEphi.initFromFile(inpf, "fieldEphi");
+    mIsEfieldSet = true;
   }
 
   int dumpPotential(TFile& outf) const
@@ -270,6 +296,10 @@ class O2TPCSpaceCharge3DCalc
 
   int dumpGlobalDistortions(TFile& outf) const
   {
+    if (!mIsGlobalDistSet) {
+      std::cout << "============== global distortions are not set! returning ==============" << std::endl;
+      return 0;
+    }
     const int er = mGlobalDistdR.storeValuesToFile(outf, "distR");
     const int ez = mGlobalDistdZ.storeValuesToFile(outf, "distZ");
     const int ephi = mGlobalDistdRPhi.storeValuesToFile(outf, "distRPhi");
@@ -278,6 +308,7 @@ class O2TPCSpaceCharge3DCalc
 
   void setGlobalDistortionsFromFile(TFile& inpf)
   {
+    mIsGlobalDistSet = true;
     mGlobalDistdR.initFromFile(inpf, "distR");
     mGlobalDistdZ.initFromFile(inpf, "distZ");
     mGlobalDistdRPhi.initFromFile(inpf, "distRPhi");
@@ -285,6 +316,10 @@ class O2TPCSpaceCharge3DCalc
 
   int dumpGlobalCorrections(TFile& outf) const
   {
+    if (!mIsGlobalCorrSet) {
+      std::cout << "============== global corrections are not set! returning ==============" << std::endl;
+      return 0;
+    }
     const int er = mGlobalCorrdR.storeValuesToFile(outf, "corrR");
     const int ez = mGlobalCorrdZ.storeValuesToFile(outf, "corrZ");
     const int ephi = mGlobalCorrdRPhi.storeValuesToFile(outf, "corrRPhi");
@@ -293,14 +328,73 @@ class O2TPCSpaceCharge3DCalc
 
   void setGlobalCorrectionsFromFile(TFile& inpf)
   {
+    mIsGlobalCorrSet = true;
     mGlobalCorrdR.initFromFile(inpf, "corrR");
     mGlobalCorrdZ.initFromFile(inpf, "corrZ");
     mGlobalCorrdRPhi.initFromFile(inpf, "corrRPhi");
   }
 
-  void printPotential() const
+  int dumpLocalCorrections(TFile& outf) const
   {
-    std::cout << mPotential;
+    if (!mIsLocalCorrSet) {
+      std::cout << "============== local corrections are not set! returning ==============" << std::endl;
+      return 0;
+    }
+    const int lCorrdR = mLocalCorrdR.storeValuesToFile(outf, "lcorrR");
+    const int lCorrdZ = mLocalCorrdZ.storeValuesToFile(outf, "lcorrZ");
+    const int lCorrdRPhi = mLocalCorrdRPhi.storeValuesToFile(outf, "lcorrRPhi");
+    return lCorrdR + lCorrdZ + lCorrdRPhi;
+  }
+
+  void setLocalCorrectionsFromFile(TFile& inpf)
+  {
+    mIsLocalCorrSet = true;
+    mLocalCorrdR.initFromFile(inpf, "lcorrR");
+    mLocalCorrdZ.initFromFile(inpf, "lcorrZ");
+    mLocalCorrdRPhi.initFromFile(inpf, "lcorrRPhi");
+  }
+
+  int dumpLocalDistortions(TFile& outf) const
+  {
+    if (!mIsLocalDistSet) {
+      std::cout << "============== local distortions are not set! returning ==============" << std::endl;
+      return 0;
+    }
+    const int lCorrdR = mLocalDistdR.storeValuesToFile(outf, "ldistR");
+    const int lCorrdZ = mLocalDistdZ.storeValuesToFile(outf, "ldistZ");
+    const int lCorrdRPhi = mLocalDistdRPhi.storeValuesToFile(outf, "ldistRPhi");
+    return lCorrdR + lCorrdZ + lCorrdRPhi;
+  }
+
+  void setLocalDistortionsFromFile(TFile& inpf)
+  {
+    mIsLocalDistSet = true;
+    mLocalDistdR.initFromFile(inpf, "ldistR");
+    mLocalDistdZ.initFromFile(inpf, "ldistZ");
+    mLocalDistdRPhi.initFromFile(inpf, "ldistRPhi");
+  }
+
+  static DataT regulatePhi(const DataT phi)
+  {
+    const DataT twoPi = 2 * M_PI;
+    DataT phiTmp = phi;
+    while (phiTmp < 0.0) {
+      phiTmp += twoPi; // TODO USE O2 for twoPi
+    }
+    while (phiTmp > twoPi) {
+      phiTmp -= twoPi;
+    }
+    return phiTmp;
+  }
+
+  DataT regulateZ(const DataT pos) const
+  {
+    return mGrid3D.clampToGrid(pos, 0);
+  }
+
+  DataT regulateR(const DataT pos) const
+  {
+    return mGrid3D.clampToGrid(pos, 1);
   }
 
  private:
@@ -318,6 +412,12 @@ class O2TPCSpaceCharge3DCalc
 
   DataT fC0 = 0; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
   DataT fC1 = 0; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
+
+  bool mIsEfieldSet = false;
+  bool mIsLocalCorrSet = false;
+  bool mIsLocalDistSet = false;
+  bool mIsGlobalCorrSet = false;
+  bool mIsGlobalDistSet = false;
 
   RegularGrid mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< this grid contains the values for the local distortions/corrections, electric field etc.
 
@@ -356,22 +456,6 @@ class O2TPCSpaceCharge3DCalc
   DataT getInvSpacingPhi() const
   {
     return mGrid3D.getInvSpacingZ();
-  }
-
-  DataT regulateZ(const DataT pos)
-  {
-    return mGrid3D.clampToGrid(pos, 0);
-  }
-
-  DataT regulateR(const DataT pos)
-  {
-    return mGrid3D.clampToGrid(pos, 1);
-  }
-
-  // TODO make this circular
-  DataT regulatePhi(const DataT pos)
-  {
-    return mGrid3D.clampToGrid(pos, 2);
   }
 
   /// calculate distortions or corrections analytical with electric fields
@@ -593,14 +677,14 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
         DataT dzTmp = 0;
 
         for (int iter = 0; iter < iSteps; ++iter) {
-          const DataT z0Tmp = z0 + iter * stepSize + dzTmp;
-          const DataT z1Tmp = z0Tmp + stepSize;
+          const DataT z0Tmp = regulateZ(z0 + iter * stepSize + dzTmp);
+          const DataT z1Tmp = regulateZ(z0Tmp + stepSize);
 
           DataT ddR = 0;
           DataT ddPhi = 0;
           DataT ddZ = 0;
-          const DataT radiusTmp = radius + drTmp;
-          const DataT phiTmp = phi + dPhiTmp;
+          const DataT radiusTmp = regulateR(radius + drTmp);
+          const DataT phiTmp = regulatePhi(phi + dPhiTmp);
 
           calcDistortions(radiusTmp, phiTmp, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
           drTmp += ddR;
@@ -620,6 +704,11 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
       }
     }
   }
+  if (lcorrections) {
+    mIsLocalCorrSet = true;
+  } else {
+    mIsLocalDistSet = true;
+  }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
@@ -630,16 +719,16 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1
   DataT localIntEPhiOverEz = 0;
   DataT localIntDeltaEz = 0;
 
-  const int iN = mNumericalIntegrationStrategy == SimpsonExperimental ? 4 : 1;
+  const int iN = mNumericalIntegrationStrategy == SimpsonExperimental ? 10 : 1;
   for (int i = 0; i < iN; ++i) {
     switch (mNumericalIntegrationStrategy) {
       case Simpson:
         integrateEFieldsSimpson(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
         break;
       case SimpsonExperimental:
-        integrateEFieldsSimpsonExperimental(p1r, p1r + ddR, p1phi, p1phi + ddRPhi, p1z, p2z + ddZ, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
+        integrateEFieldsSimpsonExperimental(p1r, regulateR(p1r + ddR), p1phi, p1phi + ddRPhi, p1z, regulateZ(p2z + ddZ), localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
         break;
-      case Trapezoidal:;
+      case Trapezoidal:
         integrateEFieldsTrapezoidal(p1r, p1phi, p1z, p2z, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
         break;
       case Root:
@@ -669,22 +758,17 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const El
         DataT dPhiDist = 0.0;
         DataT dzDist = 0.0;
 
-        bool readoutNotreached = true;
         int iter = 0;
-        while (readoutNotreached) {
-          const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
-          const DataT z1 = getZVertex(iZ + 1);
-          const DataT stepSize = formulaStruct.id == 2 ? (z1 - z0) : (z1 - z0) / getIntegrationSteps();
+        for (;;) {
+          // const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
+          // const DataT z1 = getZVertex(iZ + 1);
+          const DataT stepSize = formulaStruct.id == 2 ? mGridSpacingZ : mGridSpacingZ / getIntegrationSteps();
 
-          const DataT z0Tmp = z0 + dzDist + iter * stepSize;
-
-          if (z0Tmp + stepSize >= ASolv::fgkTPCZ0) { // set loop to exit if teh readout is reached
-            readoutNotreached = false;
-          }
+          const DataT z0Tmp = getZVertex(iZ) + dzDist + iter * stepSize;
 
           const DataT z1Tmp = regulateZ(z0Tmp + stepSize);
           const DataT radius = regulateR(getRVertex(iR) + drDist);
-          const DataT phi = regulatePhi(getPhiVertex(iPhi) + dPhiDist); // TODO phi doenst have to be regulated (circular)
+          const DataT phi = regulatePhi(getPhiVertex(iPhi) + dPhiDist);
 
           DataT ddR = 0;
           DataT ddPhi = 0;
@@ -698,6 +782,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const El
           dPhiDist += ddPhi;
           dzDist += ddZ;
 
+          if (z0Tmp + stepSize >= ASolv::fgkTPCZ0) { // set loop to exit if teh readout is reached
+            break;
+          }
           ++iter;
         }
         mGlobalDistdR(iZ, iR, iPhi) = drDist;
@@ -706,6 +793,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const El
       }
     }
   }
+  mIsGlobalDistSet = true;
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
@@ -721,12 +809,11 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const El
       for (size_t iZ = Nz - 1; iZ >= 1; --iZ) {
 
         const int iSteps = formulaStruct.id == 2 ? 1 : getIntegrationSteps();
-
         for (int iter = 0; iter < iSteps; ++iter) {
           const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
-          const DataT z1 = getZVertex(iZ - 1);
+          // const DataT z1 = getZVertex(iZ - 1);
 
-          const DataT stepSize = (z1 - z0) / iSteps;
+          const DataT stepSize = -mGridSpacingZ / iSteps;
           const DataT radius = regulateR(getRVertex(iR) + drCorr);
           const DataT phi = regulatePhi(getPhiVertex(iPhi) + dPhiCorr);
           const DataT z0Tmp = regulateZ(z0 + dzCorr + iter * stepSize);
@@ -750,6 +837,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const El
       }
     }
   }
+  mIsGlobalCorrSet = true;
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
@@ -757,7 +845,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
 {
   // store all values here for kdtree
   const int nPoints = Nz * Nr * Nphi;
-  std::vector<gte::PositionSite<3, DataT>> sites;
+  std::vector<gte::PositionSite<3, float>> sites;
   sites.reserve(nPoints);
 
   for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
@@ -776,9 +864,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
         const DataT posZCorr = z + globalCorrZ;
 
         if (posRCorr >= mRMin && posRCorr <= ASolv::fgkOFCRadius && posZCorr >= mZMin && posZCorr <= ASolv::fgkTPCZ0) {
-          const std::array<DataT, 3> position{(posZCorr - mZMin) * getInvSpacingZ(), (posRCorr - mRMin) * getInvSpacingR(), (posPhiCorr - mPhiMin) * getInvSpacingPhi()};
+          const std::array<float, 3> position{static_cast<float>((posZCorr - mZMin) * getInvSpacingZ()), static_cast<float>((posRCorr - mRMin) * getInvSpacingR()), static_cast<float>((posPhiCorr - mPhiMin) * getInvSpacingPhi())};
           const std::array<unsigned int, 3> positionIndex{iZ, iR, iPhi};
-          const gte::PositionSite<3, DataT> siteTmp(position, positionIndex);
+          const gte::PositionSite<3, float> siteTmp(position, positionIndex);
           sites.emplace_back(siteTmp);
         }
       }
@@ -793,21 +881,21 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
   for (unsigned int iZ = 0; iZ < Nz; ++iZ) {
     for (unsigned int iR = 0; iR < Nr; ++iR) {
       for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
-
         // find nearest neighbour
         const DataT radius = getRVertex(iR);
         const DataT z = getZVertex(iZ);
         const DataT phi = getPhiVertex(iPhi);
 
-        const std::array<DataT, 3> valuesQuery{(z - mZMin) * getInvSpacingZ(), (radius - mRMin) * getInvSpacingR(), (phi - mPhiMin) * getInvSpacingPhi()};
-        const gte::Vector<3, DataT> point(valuesQuery);
-        const DataT radiusSearch = 3; // larger radius -> more cpu time
+        const std::array<float, 3> valuesQuery = {static_cast<float>((z - mZMin) * getInvSpacingZ()), static_cast<float>((radius - mRMin) * getInvSpacingR()), static_cast<float>((phi - mPhiMin) * getInvSpacingPhi())};
+        const gte::Vector<3, float> point(valuesQuery);
+        const float radiusSearch = 3; // larger radius -> more cpu time
 
         const int MaxNeighbors = 1;
         std::array<int, MaxNeighbors> neighbors{};
         const int nNeighbours = kdTree.FindNeighbors<MaxNeighbors>(point, radiusSearch, neighbors);
 
         if (nNeighbours == 0) {
+          // TODO make automatic search radius
           std::cout << "no Neighbour found :( use larger search radius!" << std::endl;
           continue;
         }
@@ -831,9 +919,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
         DataT stepPhi = (phi - nearestPhi) * phiStepWidth;
 
         // needed to check for convergence
-        DataT lastCorrdR = std::numeric_limits<DataT>::max();
-        DataT lastCorrdZ = std::numeric_limits<DataT>::max();
-        DataT lastCorrdRPhi = std::numeric_limits<DataT>::max();
+        DataT lastDistanceR = std::numeric_limits<DataT>::max();
+        DataT lastDistanceZ = std::numeric_limits<DataT>::max();
+        DataT lastDistancePhi = std::numeric_limits<DataT>::max();
 
         int count = 0;
 
@@ -841,20 +929,23 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
         DataT corrdRPhi = 0;
         DataT corrdZ = 0;
 
+        const bool safe = false;
+
         for (int iter = 0; iter < maxIter; ++iter) {
           // 2. get new points coordinates
-          const DataT rPos = getRVertex(nearestiR) + stepR;
-          const DataT zPos = getZVertex(nearestiZ) + stepZ;
-          const DataT phiPos = getPhiVertex(nearestiPhi) + stepPhi;
+          const DataT rPos = regulateR(getRVertex(nearestiR) + stepR);
+          const DataT zPos = regulateZ(getZVertex(nearestiZ) + stepZ);
+          const DataT phiPosUnreg = getPhiVertex(nearestiPhi) + stepPhi;
+          const DataT phiPos = regulatePhi(phiPosUnreg);
 
-          corrdR = globCorr.evaldR(zPos, rPos, phiPos);
+          corrdR = globCorr.evaldR(zPos, rPos, phiPos, safe);
           const DataT rpos = rPos + corrdR;
 
-          const DataT corrRPhi = globCorr.evaldRPhi(zPos, rPos, phiPos);
+          const DataT corrRPhi = globCorr.evaldRPhi(zPos, rPos, phiPos, safe);
           corrdRPhi = corrRPhi / rPos * rpos;
-          const DataT phipos = phiPos + corrRPhi / rPos;
+          const DataT phipos = phiPosUnreg + corrRPhi / rPos;
 
-          corrdZ = globCorr.evaldZ(zPos, rPos, phiPos);
+          corrdZ = globCorr.evaldZ(zPos, rPos, phiPos, safe);
           const DataT zpos = zPos + corrdZ;
 
           const DataT distanceR = radius - rpos;
@@ -864,22 +955,22 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
           stepZ += distanceZ * zStepWidth;
           stepPhi += distancePhi * phiStepWidth;
 
-          const DataT totaldistRDiv = lastCorrdR == 0 ? 0 : 1 - std::abs(distanceR / lastCorrdR); // should be larger than 0
-          const bool checkR = totaldistRDiv <= convR;                                             // if the improvemnt in distance is smaller than changeRFactor set the flag
+          const DataT totaldistRDiv = lastDistanceR == 0 ? 0 : std::abs(1 - std::abs(distanceR / lastDistanceR)); // should be larger than 0
+          const bool checkR = totaldistRDiv <= convR;                                                             // if the improvemnt in distance is smaller than changeRFactor set the flag
 
-          const DataT totaldistZDiv = lastCorrdZ == 0 ? 0 : 1 - std::abs(distanceZ / lastCorrdZ); // should be larger than 0
-          const bool checkZ = totaldistZDiv <= convZ;                                             // if the improvemnt in distance is smaller than changeRFactor set the flag
+          const DataT totaldistZDiv = lastDistanceZ == 0 ? 0 : std::abs(1 - std::abs(distanceZ / lastDistanceZ)); // should be larger than 0
+          const bool checkZ = totaldistZDiv <= convZ;                                                             // if the improvemnt in distance is smaller than changeRFactor set the flag
 
-          const DataT totaldistPhiDiv = lastCorrdRPhi == 0 ? 0 : 1 - std::abs(distancePhi / lastCorrdRPhi); // should be larger than 0
-          const bool checkPhi = totaldistPhiDiv <= convPhi;                                                 // if the improvemnt in distance is smaller than changeRFactor set the flag
+          const DataT totaldistPhiDiv = lastDistancePhi == 0 ? 0 : std::abs(1 - std::abs(distancePhi / lastDistancePhi)); // should be larger than 0
+          const bool checkPhi = totaldistPhiDiv <= convPhi;                                                               // if the improvemnt in distance is smaller than changeRFactor set the flag
 
           if (checkR && checkZ && checkPhi) {
             break;
           }
 
-          lastCorrdR = distanceR;
-          lastCorrdZ = distanceZ;
-          lastCorrdRPhi = distancePhi;
+          lastDistanceR = distanceR;
+          lastDistanceZ = distanceZ;
+          lastDistancePhi = distancePhi;
           ++count;
         }
         mGlobalDistdR(iZ, iR, iPhi) = -corrdR;

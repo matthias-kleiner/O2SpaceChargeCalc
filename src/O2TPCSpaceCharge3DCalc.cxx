@@ -139,6 +139,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcEField()
       }
     }
   }
+  mIsEfieldSet = true;
 }
 
 template class O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;

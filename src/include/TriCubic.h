@@ -16,7 +16,7 @@
 #ifndef TRI_H
 #define TRI_H
 
-#include "matrix.h"
+#include "Vector.h"
 #include "RegularGrid3D.h"
 #include <omp.h>
 

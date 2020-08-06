@@ -3,7 +3,6 @@
 
 #include <functional>
 #include <cmath>
-#include "RegularGrid3D.h"
 #include "TriCubic.h"
 
 template <typename DataT = float>
@@ -12,7 +11,7 @@ struct AnalyticalFields {
   DataT parA{1e-5};                     ///< parameter [0] of functions
   DataT parB{0.5};                      ///< parameter [1] of functions
   DataT parC{1e-4};                     ///< parameter [2] of functions
-  static constexpr unsigned int id = 0; ///< needed to distinguish between the differrent structs
+  static constexpr unsigned int ID = 0; ///< needed to distinguish between the differrent structs
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -87,11 +86,12 @@ struct AnalyticalFields {
   };
 };
 
-template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
+template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
 struct NumericalFields {
-  // using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
-
-  NumericalFields(const Grid3D& gridErTmp, const Grid3D& gridEzTmp, const Grid3D& gridEphiTmp) : gridEr{gridErTmp}, gridEz{gridEzTmp}, gridEphi{gridEphiTmp} {};
+  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
+  using TriCubic = TriCubicInterpolator<DataT, Nr, Nz, Nphi>;
+  NumericalFields(const DataContainer& gridErTmp, const DataContainer& gridEzTmp, const DataContainer& gridEphiTmp, const RegularGrid& gridProperties) : gridEr{gridErTmp}, gridEz{gridEzTmp}, gridEphi{gridEphiTmp}, gridInf{gridProperties} {};
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -120,22 +120,27 @@ struct NumericalFields {
     return interpolatorEphi(z, r, phi);
   }
 
-  const Grid3D& gridEr{};   // adress to the data container of the grid
-  const Grid3D& gridEz{};   // adress to the data container of the grid
-  const Grid3D& gridEphi{}; // adress to the data container of the grid
+  const DataContainer& gridEr{};   // adress to the data container of the grid
+  const DataContainer& gridEz{};   // adress to the data container of the grid
+  const DataContainer& gridEphi{}; // adress to the data container of the grid
+  const RegularGrid& gridInf{};
+
   const bool circularZ = false;
   const bool circularR = false;
   const bool circularPhi = true;
-  TriCubicInterpolator<DataT, Grid3D> interpolatorEr{gridEr, circularZ, circularR, circularPhi};
-  TriCubicInterpolator<DataT, Grid3D> interpolatorEz{gridEz, circularZ, circularR, circularPhi};
-  TriCubicInterpolator<DataT, Grid3D> interpolatorEphi{gridEphi, circularZ, circularR, circularPhi};
-  static constexpr unsigned int id = 1; ///< needed to distinguish between the differrent structs
+  TriCubic interpolatorEr{gridEr, gridInf, circularZ, circularR, circularPhi};
+  TriCubic interpolatorEz{gridEz, gridInf, circularZ, circularR, circularPhi};
+  TriCubic interpolatorEphi{gridEphi, gridInf, circularZ, circularR, circularPhi};
+  static constexpr unsigned int ID = 1; ///< needed to distinguish between the differrent structs
 };
 
-template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
+template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
 struct DistCorrInterpolator {
+  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
+  using TriCubic = TriCubicInterpolator<DataT, Nr, Nz, Nphi>;
 
-  DistCorrInterpolator(const Grid3D& lDistCorrdR, const Grid3D& lDistCorrdZ, const Grid3D& lDistCorrdRPhi) : mDistCorrdR{lDistCorrdR}, mDistCorrdZ{lDistCorrdZ}, mDistCorrdRPhi{lDistCorrdRPhi} {};
+  DistCorrInterpolator(const DataContainer& distCorrdR, const DataContainer& distCorrdZ, const DataContainer& distCorrdRPhi, const RegularGrid& gridProperties) : distCorrdR{distCorrdR}, distCorrdZ{distCorrdZ}, distCorrdRPhi{distCorrdRPhi}, gridInf{gridProperties} {};
 
   /// \param r r coordinate
   /// \param phi phi coordinate
@@ -143,7 +148,7 @@ struct DistCorrInterpolator {
   /// \return returns the function value for the local distortion or correction dR for given coordinate
   DataT evaldR(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdR(z, r, phi, safe);
+    return interpolatorDistCorrdR(z, r, phi, safe);
   }
 
   /// \param r r coordinate
@@ -152,7 +157,7 @@ struct DistCorrInterpolator {
   /// \return returns the function value for the local distortion or correction dZ for given coordinate
   DataT evaldZ(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdZ(z, r, phi, safe);
+    return interpolatorDistCorrdZ(z, r, phi, safe);
   }
 
   /// \param r r coordinate
@@ -161,19 +166,20 @@ struct DistCorrInterpolator {
   /// \return returns the function value for the local distortion or correction dRPhi for given coordinate
   DataT evaldRPhi(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
   {
-    return mInterpolatorDistCorrdRPhi(z, r, phi, safe);
+    return interpolatorDistCorrdRPhi(z, r, phi, safe);
   }
 
-  const Grid3D& mDistCorrdR{};    // adress to the data container of the grid
-  const Grid3D& mDistCorrdZ{};    // adress to the data container of the grid
-  const Grid3D& mDistCorrdRPhi{}; // adress to the data container of the grid
+  const DataContainer& distCorrdR{};    // adress to the data container of the grid
+  const DataContainer& distCorrdZ{};    // adress to the data container of the grid
+  const DataContainer& distCorrdRPhi{}; // adress to the data container of the grid
+  const RegularGrid& gridInf{};
   const bool circularZ = false;
   const bool circularR = false;
   const bool circularPhi = true;
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdR{mDistCorrdR, circularZ, circularR, circularPhi};
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdZ{mDistCorrdZ, circularZ, circularR, circularPhi};
-  TriCubicInterpolator<DataT, Grid3D> mInterpolatorDistCorrdRPhi{mDistCorrdRPhi, circularZ, circularR, circularPhi};
-  static constexpr unsigned int id = 2; ///< needed to distinguish between the differrent structs
+  TriCubic interpolatorDistCorrdR{distCorrdR, gridInf, circularZ, circularR, circularPhi};
+  TriCubic interpolatorDistCorrdZ{distCorrdZ, gridInf, circularZ, circularR, circularPhi};
+  TriCubic interpolatorDistCorrdRPhi{distCorrdRPhi, gridInf, circularZ, circularR, circularPhi};
+  static constexpr unsigned int ID = 2; ///< needed to distinguish between the differrent structs
 };
 
 #endif

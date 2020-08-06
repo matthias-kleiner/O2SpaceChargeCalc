@@ -18,17 +18,21 @@
 
 #include "Vector.h"
 #include "RegularGrid3D.h"
+#include "DataContainer3D.h"
 #include <omp.h>
 
-template <typename DataT = float, typename Grid3D = RegularGrid3D<>>
+// template <typename DataT = float, typename DataContainer = DataContainer3D<>, typename Grid3D = RegularGrid3D<>>
+template <typename DataT = float, size_t Nx = 17, size_t Ny = 17, size_t Nz = 90>
 class TriCubicInterpolator
 {
+  using Grid3D = RegularGrid3D<DataT, Nx, Ny, Nz>;
+  using DataContainer = DataContainer3D<DataT, Nx, Ny, Nz>;
   using VDataT = Vc::Vector<DataT>;
 
  public:
   /// Constructor for a tricubic interpolator
   /// \param gridData memory adress of the 3D-Grid struct
-  TriCubicInterpolator(const Grid3D& gridData, const bool circularX = false, const bool circularY = false, const bool circularZ = false) : mGridData{gridData}, mCircular{{static_cast<int>(circularX), static_cast<int>(circularY), static_cast<int>(circularZ)}} {};
+  TriCubicInterpolator(const DataContainer& gridData, const Grid3D& gridProperties, const bool circularX = false, const bool circularY = false, const bool circularZ = false) : mGridData{gridData}, mGridProperties{gridProperties}, mCircular{{static_cast<int>(circularX), static_cast<int>(circularY), static_cast<int>(circularZ)}} {};
 
   // interpolate value at given coordinate
   /// \param x x coordinate
@@ -70,7 +74,7 @@ class TriCubicInterpolator
   /// \return returns the number of the thread. Each thread should have an individual thread number
   int getThreadNum() const
   {
-    return mThreadnum;
+    return sThreadnum;
   }
 
   /// \return performs a check if the interpolator can be used with current number of threads
@@ -81,7 +85,7 @@ class TriCubicInterpolator
 
  private:
   // matrix needed to compute the coefficients
-  inline static Vc::Memory<VDataT, 64> mA[64]{
+  inline static Vc::Memory<VDataT, 64> sMat[64]{
     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {-3, 3, 0, 0, 0, 0, 0, 0, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -147,17 +151,18 @@ class TriCubicInterpolator
     {-12, 12, 12, -12, 12, -12, -12, 12, -8, -4, 8, 4, 8, 4, -8, -4, -6, 6, -6, 6, 6, -6, 6, -6, -6, 6, 6, -6, -6, 6, 6, -6, -4, -2, -4, -2, 4, 2, 4, 2, -4, -2, 4, 2, -4, -2, 4, 2, -3, 3, -3, 3, -3, 3, -3, 3, -2, -1, -2, -1, -2, -1, -2, -1},
     {8, -8, -8, 8, -8, 8, 8, -8, 4, 4, -4, -4, -4, -4, 4, 4, 4, -4, 4, -4, -4, 4, -4, 4, 4, -4, -4, 4, 4, -4, -4, 4, 2, 2, 2, 2, -2, -2, -2, -2, 2, 2, -2, -2, 2, 2, -2, -2, 2, -2, 2, -2, 2, -2, 2, -2, 1, 1, 1, 1, 1, 1, 1, 1}};
 
-  inline static Matrix<DataT, 64> mMatrixA{mA};
+  inline static Matrix<DataT, 64> sMatrixA{sMat};
 
   static constexpr unsigned int FDim = Grid3D::getDim(); // dimensions of the grid (only 3 supported)
   static constexpr unsigned int FX = Grid3D::getFX();    // index for x coordinate
   static constexpr unsigned int FY = Grid3D::getFY();    // index for y coordinate
   static constexpr unsigned int FZ = Grid3D::getFZ();    // index for z coordinate
 
-  const Grid3D& mGridData{}; // adress to the data container of the grid
+  const DataContainer& mGridData{}; // adress to the data container of the grid
+  const Grid3D& mGridProperties{};
   const Vector<int, 3> mCircular{};
 
-  inline static thread_local const int mThreadnum{omp_get_thread_num()}; ///< save for each thread the thread number to get fast access to the correct array
+  inline static thread_local const size_t sThreadnum{static_cast<size_t>(omp_get_thread_num())}; ///< save for each thread the thread number to get fast access to the correct array
   const int mNThreads{omp_get_max_threads()};
 
   std::unique_ptr<Vector<DataT, 64>[]> mCoefficients = std::make_unique<Vector<DataT, 64>[]>(mNThreads);              ///< coefficients needed to interpolate a value
@@ -184,7 +189,7 @@ class TriCubicInterpolator
   // this helps to get circular and non circular padding indices
   int getRegulatedDelta(const int index0, const int delta, const unsigned int dim, const int offs) const
   {
-    const int regulatedDelta = mGridData.isIndexInGrid(index0 + delta, dim) ? delta : offs;
+    const int regulatedDelta = mGridProperties.isIndexInGrid(index0 + delta, dim) ? delta : offs;
     return regulatedDelta;
   }
 
@@ -193,10 +198,10 @@ class TriCubicInterpolator
     calcCoefficients(ix, iy, iz);
 
     // store current cell
-    mInitialized[mThreadnum] = true;
-    mLastInd[mThreadnum][FX] = ix;
-    mLastInd[mThreadnum][FY] = iy;
-    mLastInd[mThreadnum][FZ] = iz;
+    mInitialized[sThreadnum] = true;
+    mLastInd[sThreadnum][FX] = ix;
+    mLastInd[sThreadnum][FY] = iy;
+    mLastInd[sThreadnum][FZ] = iz;
   }
 };
 
@@ -206,10 +211,10 @@ class TriCubicInterpolator
 /// ========================================================================================================
 ///
 
-template <typename DataT, typename Grid3D>
-DataT TriCubicInterpolator<DataT, Grid3D>::evalDerivative(const DataT dx, const DataT dy, const DataT dz, const size_t derx, const size_t dery, const size_t derz) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::evalDerivative(const DataT dx, const DataT dy, const DataT dz, const size_t derx, const size_t dery, const size_t derz) const
 {
-
+  //TODO optimize this
   DataT ret{};
   DataT cont{};
 
@@ -232,13 +237,13 @@ DataT TriCubicInterpolator<DataT, Grid3D>::evalDerivative(const DataT dx, const 
       }
     }
   }
-  const auto invSpacing = mGridData.getInvSpacing();
+  const auto invSpacing = mGridProperties.getInvSpacing();
   const DataT norm = uiPow(invSpacing[FX], derx) * uiPow(invSpacing[FY], dery) * uiPow(invSpacing[FZ], derz);
   return (ret * norm);
 }
 
-template <typename DataT, typename Grid3D>
-void TriCubicInterpolator<DataT, Grid3D>::calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
 {
   int deltaX[4]{};
   int deltaY[4]{};
@@ -390,11 +395,11 @@ void TriCubicInterpolator<DataT, Grid3D>::calcCoefficients(const unsigned int ix
                                      vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]}};
 
   // calc coeffiecients
-  mCoefficients[mThreadnum] = mMatrixA * matrixPar;
+  mCoefficients[sThreadnum] = sMatrixA * matrixPar;
 }
 
-template <typename DataT, typename Grid3D>
-DataT TriCubicInterpolator<DataT, Grid3D>::interpolate(const Vector<DataT, 3>& pos) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3>& pos) const
 {
   // the formula for evaluating the interpolation is as follows:
   // f(x,y,z) = \sum_{i,j,k=0}^3 a_{ijk} * x^{i} * y^{j} * z^{k}
@@ -458,21 +463,20 @@ DataT TriCubicInterpolator<DataT, Grid3D>::interpolate(const Vector<DataT, 3>& p
                                    valZ[3], valZ[3], valZ[3], valZ[3],
                                    valZ[3], valZ[3], valZ[3], valZ[3]}};
 
-  const DataT result = sum(mCoefficients[mThreadnum] * vecValX * vecValY * vecValZ);
+  const DataT result = sum(mCoefficients[sThreadnum] * vecValX * vecValY * vecValZ);
   return result;
 }
 
-template <typename DataT, typename Grid3D>
-const Vector<DataT, 3> TriCubicInterpolator<DataT, Grid3D>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
 {
-  Vector<DataT, FDim> posRel{(coordinates - mGridData.getGridMin()) * mGridData.getInvSpacing()}; // needed for the grid index
+  Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing()}; // needed for the grid index
 
   if (safe) {
-    mGridData.clampToGridCircular(posRel, mCircular);
-    mGridData.clampToGrid(posRel, mCircular);
-  }
-  else{
-    mGridData.checkStability(posRel, mCircular);
+    mGridProperties.clampToGridCircular(posRel, mCircular);
+    mGridProperties.clampToGrid(posRel, mCircular);
+  } else {
+    mGridProperties.checkStability(posRel, mCircular);
   }
 
   const unsigned int ix = static_cast<unsigned int>(posRel[FX]);
@@ -481,7 +485,7 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Grid3D>::processInp(const Vec
 
   const Vector<unsigned int, FDim> index{{ix, iy, iz}};
 
-  if (!mInitialized[mThreadnum] || !(mLastInd[mThreadnum] == index)) {
+  if (!mInitialized[sThreadnum] || !(mLastInd[sThreadnum] == index)) {
     initInterpolator(index[FX], index[FY], index[FZ]);
   }
 
@@ -491,36 +495,36 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Grid3D>::processInp(const Vec
 }
 
 // for circular padding
-template <typename DataT, typename Grid3D>
-void TriCubicInterpolator<DataT, Grid3D>::getDataIndexCircularArray(const int index0, const int dim, int arr[]) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+void TriCubicInterpolator<DataT, Nx, Ny, Nz>::getDataIndexCircularArray(const int index0, const int dim, int arr[]) const
 {
-  const int delta_min1 = getRegulatedDelta(index0, -1, dim, mGridData.getN(dim) - 1);
-  const int delta_min2 = getRegulatedDelta(index0, -2, dim, mGridData.getN(dim) - 2);
-  const int delta_plus1 = getRegulatedDelta(index0, +1, dim, 1 - mGridData.getN(dim));
-  const int delta_plus2 = getRegulatedDelta(index0, +2, dim, 2 - mGridData.getN(dim));
+  const int delta_min1 = getRegulatedDelta(index0, -1, dim, mGridProperties.getN(dim) - 1);
+  const int delta_min2 = getRegulatedDelta(index0, -2, dim, mGridProperties.getN(dim) - 2);
+  const int delta_plus1 = getRegulatedDelta(index0, +1, dim, 1 - mGridProperties.getN(dim));
+  const int delta_plus2 = getRegulatedDelta(index0, +2, dim, 2 - mGridProperties.getN(dim));
 
-  arr[0] = mGridData.getDeltaDataIndex(delta_min2, dim);
-  arr[1] = mGridData.getDeltaDataIndex(delta_min1, dim);
-  arr[2] = mGridData.getDeltaDataIndex(delta_plus1, dim);
-  arr[3] = mGridData.getDeltaDataIndex(delta_plus2, dim);
+  arr[0] = mGridProperties.getDeltaDataIndex(delta_min2, dim);
+  arr[1] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
+  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
+  arr[3] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
 }
 
-template <typename DataT, typename Grid3D>
-void TriCubicInterpolator<DataT, Grid3D>::getDataIndexNonCircularArray(const int index0, const int dim, int arr[]) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+void TriCubicInterpolator<DataT, Nx, Ny, Nz>::getDataIndexNonCircularArray(const int index0, const int dim, int arr[]) const
 {
   const int delta_min1 = getRegulatedDelta(index0, -1, dim, 0);
   const int delta_min2 = getRegulatedDelta(index0, -2, dim, delta_min1);
   const int delta_plus1 = getRegulatedDelta(index0, +1, dim, 0);
   const int delta_plus2 = getRegulatedDelta(index0, +2, dim, delta_plus1);
 
-  arr[0] = mGridData.getDeltaDataIndex(delta_min2, dim);
-  arr[1] = mGridData.getDeltaDataIndex(delta_min1, dim);
-  arr[2] = mGridData.getDeltaDataIndex(delta_plus1, dim);
-  arr[3] = mGridData.getDeltaDataIndex(delta_plus2, dim);
+  arr[0] = mGridProperties.getDeltaDataIndex(delta_min2, dim);
+  arr[1] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
+  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
+  arr[3] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
 }
 
-template <typename DataT, typename Grid3D>
-DataT TriCubicInterpolator<DataT, Grid3D>::uiPow(const DataT base, unsigned int exponent) const
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::uiPow(const DataT base, unsigned int exponent) const
 {
   DataT result = 1;
   // infinite for loop

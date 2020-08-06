@@ -21,8 +21,8 @@
 #include "SpaceChargeStructs.h"
 
 // Root includes
-#include "TF1.h" /// for numerical intergration only
-#include "TTree.h"
+#include "TF1.h"   /// for numerical intergration only
+#include "TTree.h" /// for debugging
 
 #ifdef WITH_OPENMP
 #include <omp.h>
@@ -38,203 +38,163 @@
 template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
 class O2TPCSpaceCharge3DCalc
 {
-  using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
 
  public:
   O2TPCSpaceCharge3DCalc() = default;
 
-  // stepp 0:
+  // stepp 0: this function fills the internal storage for density and boundary conditions for potential
   // TODO change this to accept histogram as input for density
+  /// \param formulaStruct struct containing a method to evaluate the density and potential
   void fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct);
 
-  // stepp 1:
+  // stepp 1: use the AliTPCPoissonSolver class to numerically calculate the potential with space charge density and boundary conditions from potential
   void poissonSolver(const int maxIteration = 300, const DataT stoppingConvergence = 1e-8);
 
-  // stepp 2:
+  // stepp 2: calculate numerically the electric field from the potential
   void calcEField();
 
   // stepp 3:
-  /// lcorrections=false -> distortions, lcorrections=true->corrections
+  /// \param type calculate local corrections or local distortions: type=0->distortions, type=1->corrections
+  /// \param formulaStruct struct containing a method to evaluate the electric field Er, Ez, Ephi
   template <typename ElectricFields = AnalyticalFields<DataT>>
-  void calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct);
+  void calcLocalDistortionsCorrections(const int type, ElectricFields& formulaStruct);
 
-  //step 4:
-  // Info("AliTPCSpaceCharge3DCalc::InitSpaceCharge3DPoissonIntegralDz", "%s", Form("Step 4: Global correction/distortion cpu time: %f\n", w.CpuTime()));
-  void calcGlobalDistortionsCorrections();
-
+  //step 4: calculate global distortions by using the electric field or the local distortions
+  /// \param formulaStruct struct containing a method to evaluate the electric field Er, Ez, Ephi or the local distortions
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcGlobalDistortions(const ElectricFields& formulaStruct);
 
+  //step 4: calculate global corrections by using the electric field or the local corrections
+  /// \param formulaStruct struct containing a method to evaluate the electric field Er, Ez, Ephi or the local corrections
   template <typename ElectricFields = AnalyticalFields<DataT>>
   void calcGlobalCorrections(const ElectricFields& formulaStruct);
 
-  // calculate global distortions using the global corrections RENAME NAME
-  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, RegularGrid>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05);
+  // calculate global distortions using the global corrections
+  /// \param globCorr interpolator of global corrections
+  /// \param maxIter maximum iterations per global distortion
+  /// \param convZ convergence criteria for z direction: if the ratio from the position from last iteration zPosLast compared to positon from current iteration zPosCurr is smaller than this value set converged to true abs(1-abs(zPosLast/zPosCurr))<convZ
+  /// \param convR convergence criteria for r direction: if the ratio from the position from last iteration rPosLast compared to positon from current iteration rPosCurr is smaller than this value set converged to true abs(1-abs(rPosLast/rPosCurr))<convR
+  /// \param convPhi convergence criteria for phi direction: if the ratio from the position from last iteration phiPosLast compared to positon from current iteration phiPosCurr is smaller than this value set converged to true abs(1-abs(PhiPosLast/PhiPosCurr))<convPhi
+  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05);
 
+  /// Get grid spacing in r direction
   static constexpr DataT getGridSpacingR() { return mGridSpacingR; }
+
+  /// Get grid spacing in z direction
   static constexpr DataT getGridSpacingZ() { return mGridSpacingZ; }
+
+  /// Get grid spacing in phi direction
   static constexpr DataT getGridSpacingPhi() { return mGridSpacingPhi; }
+
+  /// Get constant electric field
   static constexpr DataT getEzField() { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
 
+  /// Get inner radius of tpc
   static constexpr DataT getRMin() { return mRMin; }
+
+  /// Get min z position which is used during the calaculations
   static constexpr DataT getZMin() { return mZMin; }
+
+  /// Get max r
   static constexpr DataT getRMax() { return mGridSpacingR * (Nr - 1) + mRMin; };
+
+  /// Get max z
   static constexpr DataT getZMax() { return mGridSpacingZ * (Nz - 1) + mZMin; }
 
+  /// Get the grid object
   const RegularGrid& getGrid3D() const { return mGrid3D; }
 
-  NumericalFields<DataT, RegularGrid> getNumericalFieldsInterpolator() const
-  {
-    if (!mIsEfieldSet) {
-      std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
-    }
-    NumericalFields<DataT, RegularGrid> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi);
-    return numFields;
-  }
+  /// Get struct containing interpolators for electrical fields
+  NumericalFields<DataT, Nr, Nz, Nphi> getElectricFieldsInterpolator() const;
 
-  DistCorrInterpolator<DataT, RegularGrid> getLocalDistInterpolator() const
-  {
-    if (!mIsLocalDistSet) {
-      std::cout << "============== local distortions not set! returning ==============" << std::endl;
-    }
-    DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi);
-    return numFields;
-  }
+  /// Get struct containing interpolators for local distortions dR, dZ, dPhi
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getLocalDistInterpolator() const;
 
-  DistCorrInterpolator<DataT, RegularGrid> getLocalCorrInterpolator() const
-  {
-    if (!mIsLocalCorrSet) {
-      std::cout << "============== local corrections not set! returning ==============" << std::endl;
-    }
-    DistCorrInterpolator<DataT, RegularGrid> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi);
-    return numFields;
-  }
+  /// Get struct containing interpolators for local corrections dR, dZ, dPhi
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getLocalCorrInterpolator() const;
 
-  DistCorrInterpolator<DataT, RegularGrid> getGlobalDistInterpolator() const
-  {
-    if (!mIsGlobalDistSet) {
-      std::cout << "============== global distortions not set! returning ==============" << std::endl;
-    }
-    DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalDistdR, mGlobalDistdZ, mGlobalDistdRPhi);
-    return numFields;
-  }
+  /// Get struct containing interpolators for global distortions dR, dZ, dPhi
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getGlobalDistInterpolator() const;
 
-  DistCorrInterpolator<DataT, RegularGrid> getGlobalCorrInterpolator() const
-  {
-    if (!mIsGlobalCorrSet) {
-      std::cout << "============== global corrections not set! returning ==============" << std::endl;
-    }
-    DistCorrInterpolator<DataT, RegularGrid> numFields(mGlobalCorrdR, mGlobalCorrdZ, mGlobalCorrdRPhi);
-    return numFields;
-  }
+  /// Get struct containing interpolators for global corrections dR, dZ, dPhi
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getGlobalCorrInterpolator() const;
 
-  DataT getLocalDistR(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalDistdR(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local distortion dR for given vertex
+  DataT getLocalDistR(size_t iz, size_t ir, size_t iphi) const { return mLocalDistdR(iz, ir, iphi); }
 
-  DataT getLocalDistZ(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalDistdZ(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local distortion dZ for given vertex
+  DataT getLocalDistZ(size_t iz, size_t ir, size_t iphi) const { return mLocalDistdZ(iz, ir, iphi); }
 
-  DataT getLocalDistRPhi(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalDistdRPhi(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local distortion dRPhi for given vertex
+  DataT getLocalDistRPhi(size_t iz, size_t ir, size_t iphi) const { return mLocalDistdRPhi(iz, ir, iphi); }
 
-  DataT getLocalCorrR(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalCorrdR(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local correction dR for given vertex
+  DataT getLocalCorrR(size_t iz, size_t ir, size_t iphi) const { return mLocalCorrdR(iz, ir, iphi); }
 
-  DataT getLocalCorrZ(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalCorrdZ(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local correction dZ for given vertex
+  DataT getLocalCorrZ(size_t iz, size_t ir, size_t iphi) const { return mLocalCorrdZ(iz, ir, iphi); }
 
-  DataT getLocalCorrRPhi(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mLocalCorrdRPhi(iz, ir, iphi);
-  }
+  /// \param vertex in iz dimension
+  /// \param vertex in ir dimension
+  /// \param vertex in iphi dimension
+  /// \return returns local correction dRPhi for given vertex
+  DataT getLocalCorrRPhi(size_t iz, size_t ir, size_t iphi) const { return mLocalCorrdRPhi(iz, ir, iphi); }
 
-  DataT getGlobalDistR(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalDistdR(iz, ir, iphi);
-  }
+  /// Get global distortion dR for vertex
+  DataT getGlobalDistR(size_t iz, size_t ir, size_t iphi) const { return mGlobalDistdR(iz, ir, iphi); }
 
-  DataT getGlobalDistZ(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalDistdZ(iz, ir, iphi);
-  }
+  /// Get global distortion dZ for vertex
+  DataT getGlobalDistZ(size_t iz, size_t ir, size_t iphi) const { return mGlobalDistdZ(iz, ir, iphi); }
 
-  DataT getGlobalDistRPhi(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalDistdRPhi(iz, ir, iphi);
-  }
+  /// Get global distortion dRPhi for vertex
+  DataT getGlobalDistRPhi(size_t iz, size_t ir, size_t iphi) const { return mGlobalDistdRPhi(iz, ir, iphi); }
 
-  DataT getGlobalCorrR(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalCorrdR(iz, ir, iphi);
-  }
+  /// Get global correction dR for vertex
+  DataT getGlobalCorrR(size_t iz, size_t ir, size_t iphi) const { return mGlobalCorrdR(iz, ir, iphi); }
 
-  DataT getGlobalCorrZ(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalCorrdZ(iz, ir, iphi);
-  }
+  /// Get global correction dZ for vertex
+  DataT getGlobalCorrZ(size_t iz, size_t ir, size_t iphi) const { return mGlobalCorrdZ(iz, ir, iphi); }
 
-  DataT getGlobalCorrRPhi(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mGlobalCorrdRPhi(iz, ir, iphi);
-  }
+  /// Get global correction dRPhi for vertex
+  DataT getGlobalCorrRPhi(size_t iz, size_t ir, size_t iphi) const { return mGlobalCorrdRPhi(iz, ir, iphi); }
 
-  DataT getEr(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mElectricFieldEr(iz, ir, iphi);
-  }
+  /// Get global electric Field Er for vertex
+  DataT getEr(size_t iz, size_t ir, size_t iphi) const { return mElectricFieldEr(iz, ir, iphi); }
 
-  /// return the numerically calculated electric field. To get the analytical field use the struct eval function
-  DataT getEz(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mElectricFieldEz(iz, ir, iphi);
-  }
+  /// Get global electric Field Ez for vertex
+  DataT getEz(size_t iz, size_t ir, size_t iphi) const { return mElectricFieldEz(iz, ir, iphi); }
 
-  DataT getEphi(size_t iz, size_t ir, size_t iphi) const
-  {
-    return mElectricFieldEphi(iz, ir, iphi);
-  }
+  /// Get global electric Field Ephi for vertex
+  DataT getEphi(size_t iz, size_t ir, size_t iphi) const { return mElectricFieldEphi(iz, ir, iphi); }
 
-  int getIntegrationSteps() const { return mStepWidth; }
+  /// Get the step width which is used for the calculation of the correction/distortions in units of the z-bin
+  int getStepWidth() const { return 1 / mStepWidth; }
 
-  DataT getPhiVertex(size_t indexPhi) const
-  {
-    return mGrid3D.getZVertex(indexPhi);
-  }
+  /// Get phi vertex psotion for index in phi direction
+  DataT getPhiVertex(size_t indexPhi) const { return mGrid3D.getZVertex(indexPhi); }
 
-  DataT getRVertex(size_t indexR) const
-  {
-    return mGrid3D.getYVertex(indexR);
-  }
+  /// Get r vertex psotion for index in r direction
+  DataT getRVertex(size_t indexR) const { return mGrid3D.getYVertex(indexR); }
 
-  DataT getZVertex(size_t indexZ) const
-  {
-    return mGrid3D.getXVertex(indexZ);
-  }
-
-  const RegularGrid& getGridEr() const
-  {
-    return mElectricFieldEr;
-  }
-
-  const RegularGrid& getGridEz() const
-  {
-    return mElectricFieldEz;
-  }
-
-  const RegularGrid& getGridEphi() const
-  {
-    return mElectricFieldEphi;
-  }
+  /// Get z vertex psotion for index in z direction
+  DataT getZVertex(size_t indexZ) const { return mGrid3D.getXVertex(indexZ); }
 
   void setOmegaTauT1T2(DataT omegaTau, DataT t1, DataT t2)
   {
@@ -250,162 +210,66 @@ class O2TPCSpaceCharge3DCalc
     fC1 = c1;
   }
 
-  void setIntegrationSteps(const int nSteps) { mStepWidth = nSteps; }
+  void setNStep(const int nSteps) { mStepWidth = nSteps; }
 
   /// numerical integration strategys
-  enum IntegrationStrategy { Trapezoidal = 0,
-                             Simpson = 1,
-                             Root = 2,
-                             SimpsonExperimental = 3 };
-
-  // calculat the global distortions with interpolation of local distortions or by taking the electric field
-  enum GlobalDistortionType {
-    LocalDistortions = 0,
-    ElectricField = 1
+  enum IntegrationStrategy { Trapezoidal = 0,        ///< trapezoidal integration (https://en.wikipedia.org/wiki/Trapezoidal_rule). straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
+                             Simpson = 1,            ///< simpon integration. see: https://en.wikipedia.org/wiki/Simpson%27s_rule. straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
+                             Root = 2,               ///< Root integration. straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
+                             SimpsonExperimental = 3 ///< simpon integration, but using an iterative method to approximate the drift path. No straight electron drift line assumed: z0->z1, r0->r1, phi0->phi1
   };
 
-  int dumpElectricFields(TFile& outf) const
-  {
-    if (!mIsEfieldSet) {
-      std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
-      return 0;
-    }
-    const int er = mElectricFieldEr.storeValuesToFile(outf, "fieldEr");
-    const int ez = mElectricFieldEz.storeValuesToFile(outf, "fieldEz");
-    const int ephi = mElectricFieldEphi.storeValuesToFile(outf, "fieldEphi");
-    return er + ez + ephi;
-  }
+  /// write electric field to root file
+  int dumpElectricFields(TFile& outf) const;
 
-  void setElectricFieldsFromFile(TFile& inpf)
-  {
-    mElectricFieldEr.initFromFile(inpf, "fieldEr");
-    mElectricFieldEz.initFromFile(inpf, "fieldEz");
-    mElectricFieldEphi.initFromFile(inpf, "fieldEphi");
-    mIsEfieldSet = true;
-  }
+  /// set electric field from root file
+  void setElectricFieldsFromFile(TFile& inpf);
 
-  int dumpPotential(TFile& outf) const
-  {
-    return mPotential.storeValuesToFile(outf, "potential");
-  }
+  /// write potential to root file
+  int dumpPotential(TFile& outf) const { return mPotential.writeToFile(outf, "potential"); }
 
-  void setPotentialFromFile(TFile& inpf)
-  {
-    mPotential.initFromFile(inpf, "potential");
-  }
+  /// set potential from root file
+  void setPotentialFromFile(TFile& inpf) { mPotential.initFromFile(inpf, "potential"); }
 
-  int dumpGlobalDistortions(TFile& outf) const
-  {
-    if (!mIsGlobalDistSet) {
-      std::cout << "============== global distortions are not set! returning ==============" << std::endl;
-      return 0;
-    }
-    const int er = mGlobalDistdR.storeValuesToFile(outf, "distR");
-    const int ez = mGlobalDistdZ.storeValuesToFile(outf, "distZ");
-    const int ephi = mGlobalDistdRPhi.storeValuesToFile(outf, "distRPhi");
-    return er + ez + ephi;
-  }
+  /// write global distortions to root file
+  int dumpGlobalDistortions(TFile& outf) const;
 
-  void setGlobalDistortionsFromFile(TFile& inpf)
-  {
-    mIsGlobalDistSet = true;
-    mGlobalDistdR.initFromFile(inpf, "distR");
-    mGlobalDistdZ.initFromFile(inpf, "distZ");
-    mGlobalDistdRPhi.initFromFile(inpf, "distRPhi");
-  }
+  /// set global distortions from root file
+  void setGlobalDistortionsFromFile(TFile& inpf);
 
-  int dumpGlobalCorrections(TFile& outf) const
-  {
-    if (!mIsGlobalCorrSet) {
-      std::cout << "============== global corrections are not set! returning ==============" << std::endl;
-      return 0;
-    }
-    const int er = mGlobalCorrdR.storeValuesToFile(outf, "corrR");
-    const int ez = mGlobalCorrdZ.storeValuesToFile(outf, "corrZ");
-    const int ephi = mGlobalCorrdRPhi.storeValuesToFile(outf, "corrRPhi");
-    return er + ez + ephi;
-  }
+  /// write global corrections to root file
+  int dumpGlobalCorrections(TFile& outf) const;
 
-  void setGlobalCorrectionsFromFile(TFile& inpf)
-  {
-    mIsGlobalCorrSet = true;
-    mGlobalCorrdR.initFromFile(inpf, "corrR");
-    mGlobalCorrdZ.initFromFile(inpf, "corrZ");
-    mGlobalCorrdRPhi.initFromFile(inpf, "corrRPhi");
-  }
+  /// set global corrections from root file
+  void setGlobalCorrectionsFromFile(TFile& inpf);
 
-  int dumpLocalCorrections(TFile& outf) const
-  {
-    if (!mIsLocalCorrSet) {
-      std::cout << "============== local corrections are not set! returning ==============" << std::endl;
-      return 0;
-    }
-    const int lCorrdR = mLocalCorrdR.storeValuesToFile(outf, "lcorrR");
-    const int lCorrdZ = mLocalCorrdZ.storeValuesToFile(outf, "lcorrZ");
-    const int lCorrdRPhi = mLocalCorrdRPhi.storeValuesToFile(outf, "lcorrRPhi");
-    return lCorrdR + lCorrdZ + lCorrdRPhi;
-  }
+  /// write local corrections to root file
+  int dumpLocalCorrections(TFile& outf) const;
 
-  void setLocalCorrectionsFromFile(TFile& inpf)
-  {
-    mIsLocalCorrSet = true;
-    mLocalCorrdR.initFromFile(inpf, "lcorrR");
-    mLocalCorrdZ.initFromFile(inpf, "lcorrZ");
-    mLocalCorrdRPhi.initFromFile(inpf, "lcorrRPhi");
-  }
+  /// set local corrections from root file
+  void setLocalCorrectionsFromFile(TFile& inpf);
 
-  int dumpLocalDistortions(TFile& outf) const
-  {
-    if (!mIsLocalDistSet) {
-      std::cout << "============== local distortions are not set! returning ==============" << std::endl;
-      return 0;
-    }
-    const int lCorrdR = mLocalDistdR.storeValuesToFile(outf, "ldistR");
-    const int lCorrdZ = mLocalDistdZ.storeValuesToFile(outf, "ldistZ");
-    const int lCorrdRPhi = mLocalDistdRPhi.storeValuesToFile(outf, "ldistRPhi");
-    return lCorrdR + lCorrdZ + lCorrdRPhi;
-  }
+  /// write local distortions to root file
+  int dumpLocalDistortions(TFile& outf) const;
 
-  void setLocalDistortionsFromFile(TFile& inpf)
-  {
-    mIsLocalDistSet = true;
-    mLocalDistdR.initFromFile(inpf, "ldistR");
-    mLocalDistdZ.initFromFile(inpf, "ldistZ");
-    mLocalDistdRPhi.initFromFile(inpf, "ldistRPhi");
-  }
+  /// set local distortions from root file
+  void setLocalDistortionsFromFile(TFile& inpf);
 
-  static DataT regulatePhi(const DataT phi)
-  {
-    const DataT twoPi = 2 * M_PI;
-    DataT phiTmp = phi;
-    while (phiTmp < 0.0) {
-      phiTmp += twoPi; // TODO USE O2 for twoPi
-    }
-    while (phiTmp > twoPi) {
-      phiTmp -= twoPi;
-    }
-    return phiTmp;
-  }
+  static DataT regulatePhi(const DataT phi);
 
-  DataT regulateZ(const DataT pos) const
-  {
-    return mGrid3D.clampToGrid(pos, 0);
-  }
+  DataT regulateZ(const DataT pos) const { return mGrid3D.clampToGrid(pos, 0); }
 
-  DataT regulateR(const DataT pos) const
-  {
-    return mGrid3D.clampToGrid(pos, 1);
-  }
+  DataT regulateR(const DataT pos) const { return mGrid3D.clampToGrid(pos, 1); }
 
  private:
   using ASolv = AliTPCPoissonSolver<DataT>;
 
-  static constexpr DataT mRMin = ASolv::fgkIFCRadius; ///< min radius
-  static constexpr DataT mZMin = ASolv::fgkZOffSet;   ///< min z coordinate
-  static constexpr DataT mPhiMin = 0;
+  static constexpr DataT mRMin = ASolv::fgkIFCRadius;                              ///< min radius
+  static constexpr DataT mZMin = ASolv::fgkZOffSet;                                ///< min z coordinate
+  static constexpr DataT mPhiMin = 0;                                              ///< min phi coordinate
   static constexpr DataT mGridSpacingR = (ASolv::fgkOFCRadius - mRMin) / (Nr - 1); ///< grid spacing in r direction
   static constexpr DataT mGridSpacingZ = (ASolv::fgkTPCZ0 - mZMin) / (Nz - 1);     ///< grid spacing in z direction
-  static constexpr DataT mGridSpacingPhi = 2 * M_PI / Nphi;                        ///< grid spacing in phi direction // TODO CHANGE TO O2                                                           ///< min phi coordinate
+  static constexpr DataT mGridSpacingPhi = 2 * M_PI / Nphi;                        ///< grid spacing in phi direction // TODO CHANGE TO O2
   int mNumericalIntegrationStrategy = SimpsonExperimental;                         ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
   unsigned int mNumericalIntegrationSteps = 1;                                     ///< number of intervalls during numerical integration are taken.
   int mStepWidth = 1;                                                              ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
@@ -413,50 +277,41 @@ class O2TPCSpaceCharge3DCalc
   DataT fC0 = 0; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
   DataT fC1 = 0; ///< coefficient C1 (compare Jim Thomas's notes for definitions)
 
-  bool mIsEfieldSet = false;
-  bool mIsLocalCorrSet = false;
-  bool mIsLocalDistSet = false;
-  bool mIsGlobalCorrSet = false;
-  bool mIsGlobalDistSet = false;
+  bool mIsEfieldSet = false;     ///< flag if E-fields are set
+  bool mIsLocalCorrSet = false;  ///< flag if local corrections are set
+  bool mIsLocalDistSet = false;  ///< flag if local distortions are set
+  bool mIsGlobalCorrSet = false; ///< flag if global corrections are set
+  bool mIsGlobalDistSet = false; ///< flag if global distortions are set
 
-  RegularGrid mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< this grid contains the values for the local distortions/corrections, electric field etc.
+  RegularGrid mGrid3D{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi}; ///< grid properties
 
-  RegularGrid mLocalDistdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mLocalDistdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mLocalDistdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  DataContainer mLocalDistdR{};    ///< data storage for local distortions dR
+  DataContainer mLocalDistdZ{};    ///< data storage for local distortions dZ
+  DataContainer mLocalDistdRPhi{}; ///< data storage for local distortions dRPhi
 
-  RegularGrid mLocalCorrdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mLocalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mLocalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  DataContainer mLocalCorrdR{};    ///< data storage for local corrections dR
+  DataContainer mLocalCorrdZ{};    ///< data storage for local corrections dZ
+  DataContainer mLocalCorrdRPhi{}; ///< data storage for local corrections dRPhi
 
-  RegularGrid mGlobalDistdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mGlobalDistdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mGlobalDistdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  DataContainer mGlobalDistdR{};    ///< data storage for global distortions dR
+  DataContainer mGlobalDistdZ{};    ///< data storage for global distortions dZ
+  DataContainer mGlobalDistdRPhi{}; ///< data storage for global distortions dRPhi
 
-  RegularGrid mGlobalCorrdR{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mGlobalCorrdZ{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mGlobalCorrdRPhi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  DataContainer mGlobalCorrdR{};    ///< data storage for global corrections dR
+  DataContainer mGlobalCorrdZ{};    ///< data storage for global corrections dZ
+  DataContainer mGlobalCorrdRPhi{}; ///< data storage for global corrections dRPhi
 
-  RegularGrid mDensity{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mPotential{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mElectricFieldEr{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mElectricFieldEz{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
-  RegularGrid mElectricFieldEphi{mZMin, mRMin, mPhiMin, mGridSpacingZ, mGridSpacingR, mGridSpacingPhi};
+  DataContainer mDensity{};           ///< data storage for space charge density
+  DataContainer mPotential{};         ///< data storage for the potential
+  DataContainer mElectricFieldEr{};   ///< data storage for the electric field Er
+  DataContainer mElectricFieldEz{};   ///< data storage for the electric field Ez
+  DataContainer mElectricFieldEphi{}; ///< data storage for the electric field Ephi
 
-  DataT getInvSpacingR() const
-  {
-    return mGrid3D.getInvSpacingY();
-  }
+  DataT getInvSpacingZ() const { return mGrid3D.getInvSpacingX(); }
 
-  DataT getInvSpacingZ() const
-  {
-    return mGrid3D.getInvSpacingX();
-  }
+  DataT getInvSpacingR() const { return mGrid3D.getInvSpacingY(); }
 
-  DataT getInvSpacingPhi() const
-  {
-    return mGrid3D.getInvSpacingZ();
-  }
+  DataT getInvSpacingPhi() const { return mGrid3D.getInvSpacingZ(); }
 
   /// calculate distortions or corrections analytical with electric fields
   template <typename ElectricFields = AnalyticalFields<DataT>>
@@ -479,12 +334,12 @@ class O2TPCSpaceCharge3DCalc
     calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
   }
 
-  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const NumericalFields<DataT, RegularGrid>& formulaStruct) const
+  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const NumericalFields<DataT, Nr, Nz, Nphi>& formulaStruct) const
   {
     calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
   }
 
-  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const DistCorrInterpolator<DataT, RegularGrid>& formulaStruct) const
+  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& formulaStruct) const
   {
     ddR = formulaStruct.evaldR(z0Tmp, radius, phi);
     ddZ = formulaStruct.evaldZ(z0Tmp, radius, phi);
@@ -655,7 +510,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpsonExperim
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrections(const bool lcorrections, ElectricFields& formulaStruct)
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrections(const int type, ElectricFields& formulaStruct)
 {
 #pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; iPhi++) {
@@ -665,10 +520,10 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
       for (size_t iZ = 0; iZ < Nz - 1; ++iZ) {
 
         // set z coordinated depending on distortions or correction calculation
-        const DataT z0 = lcorrections ? getZVertex(iZ + 1) : getZVertex(iZ);
-        const DataT z1 = lcorrections ? getZVertex(iZ) : getZVertex(iZ + 1);
+        const DataT z0 = type == 1 ? getZVertex(iZ + 1) : getZVertex(iZ);
+        const DataT z1 = type == 1 ? getZVertex(iZ) : getZVertex(iZ + 1);
 
-        const int iSteps = getIntegrationSteps();
+        const int iSteps = mStepWidth;
         const DataT stepSize = (z1 - z0) / iSteps;
 
         DataT drTmp = 0;
@@ -692,7 +547,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
           dPhiTmp += ddPhi;
           dzTmp += ddZ;
         }
-        if (lcorrections == true) {
+        if (type == 1) {
           mLocalCorrdR(iZ + 1, iR, iPhi) = drTmp;
           mLocalCorrdRPhi(iZ + 1, iR, iPhi) = dRPhiTmp;
           mLocalCorrdZ(iZ + 1, iR, iPhi) = dzTmp;
@@ -704,7 +559,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
       }
     }
   }
-  if (lcorrections) {
+  if (type == 1) {
     mIsLocalCorrSet = true;
   } else {
     mIsLocalDistSet = true;
@@ -761,8 +616,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const El
         int iter = 0;
         for (;;) {
           // const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
-          // const DataT z1 = getZVertex(iZ + 1);
-          const DataT stepSize = formulaStruct.id == 2 ? mGridSpacingZ : mGridSpacingZ / getIntegrationSteps();
+          const DataT stepSize = formulaStruct.ID == 2 ? mGridSpacingZ : mGridSpacingZ / mStepWidth;
 
           const DataT z0Tmp = getZVertex(iZ) + dzDist + iter * stepSize;
 
@@ -808,11 +662,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const El
       DataT dzCorr = 0;
       for (size_t iZ = Nz - 1; iZ >= 1; --iZ) {
 
-        const int iSteps = formulaStruct.id == 2 ? 1 : getIntegrationSteps();
+        const int iSteps = formulaStruct.ID == 2 ? 1 : mStepWidth;
         for (int iter = 0; iter < iSteps; ++iter) {
           const DataT z0 = getZVertex(iZ); // the electron starts at phi, radius, z0
-          // const DataT z1 = getZVertex(iZ - 1);
-
           const DataT stepSize = -mGridSpacingZ / iSteps;
           const DataT radius = regulateR(getRVertex(iR) + drCorr);
           const DataT phi = regulatePhi(getPhiVertex(iPhi) + dPhiCorr);
@@ -841,7 +693,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const El
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, RegularGrid>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi)
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi)
 {
   // store all values here for kdtree
   const int nPoints = Nz * Nr * Nphi;
@@ -979,6 +831,181 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
       }
     }
   }
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+NumericalFields<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getElectricFieldsInterpolator() const
+{
+  if (!mIsEfieldSet) {
+    std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
+  }
+  NumericalFields<DataT, Nr, Nz, Nphi> numFields(mElectricFieldEr, mElectricFieldEz, mElectricFieldEphi, mGrid3D);
+  return numFields;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getLocalDistInterpolator() const
+{
+  if (!mIsLocalDistSet) {
+    std::cout << "============== local distortions not set! returning ==============" << std::endl;
+  }
+
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mLocalDistdR, mLocalDistdZ, mLocalDistdRPhi, mGrid3D);
+  return numFields;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getLocalCorrInterpolator() const
+{
+  if (!mIsLocalCorrSet) {
+    std::cout << "============== local corrections not set! returning ==============" << std::endl;
+  }
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mLocalCorrdR, mLocalCorrdZ, mLocalCorrdRPhi, mGrid3D);
+  return numFields;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getGlobalDistInterpolator() const
+{
+  if (!mIsGlobalDistSet) {
+    std::cout << "============== global distortions not set! returning ==============" << std::endl;
+  }
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mGlobalDistdR, mGlobalDistdZ, mGlobalDistdRPhi, mGrid3D);
+  return numFields;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getGlobalCorrInterpolator() const
+{
+  if (!mIsGlobalCorrSet) {
+    std::cout << "============== global corrections not set! returning ==============" << std::endl;
+  }
+  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mGlobalCorrdR, mGlobalCorrdZ, mGlobalCorrdRPhi, mGrid3D);
+  return numFields;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpElectricFields(TFile& outf) const
+{
+  if (!mIsEfieldSet) {
+    std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
+    return 0;
+  }
+  const int er = mElectricFieldEr.writeToFile(outf, "fieldEr");
+  const int ez = mElectricFieldEz.writeToFile(outf, "fieldEz");
+  const int ephi = mElectricFieldEphi.writeToFile(outf, "fieldEphi");
+  return er + ez + ephi;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setElectricFieldsFromFile(TFile& inpf)
+{
+  mElectricFieldEr.initFromFile(inpf, "fieldEr");
+  mElectricFieldEz.initFromFile(inpf, "fieldEz");
+  mElectricFieldEphi.initFromFile(inpf, "fieldEphi");
+  mIsEfieldSet = true;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalDistortions(TFile& outf) const
+{
+  if (!mIsGlobalDistSet) {
+    std::cout << "============== global distortions are not set! returning ==============" << std::endl;
+    return 0;
+  }
+  const int er = mGlobalDistdR.writeToFile(outf, "distR");
+  const int ez = mGlobalDistdZ.writeToFile(outf, "distZ");
+  const int ephi = mGlobalDistdRPhi.writeToFile(outf, "distRPhi");
+  return er + ez + ephi;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalDistortionsFromFile(TFile& inpf)
+{
+  mIsGlobalDistSet = true;
+  mGlobalDistdR.initFromFile(inpf, "distR");
+  mGlobalDistdZ.initFromFile(inpf, "distZ");
+  mGlobalDistdRPhi.initFromFile(inpf, "distRPhi");
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalCorrections(TFile& outf) const
+{
+  if (!mIsGlobalCorrSet) {
+    std::cout << "============== global corrections are not set! returning ==============" << std::endl;
+    return 0;
+  }
+  const int er = mGlobalCorrdR.writeToFile(outf, "corrR");
+  const int ez = mGlobalCorrdZ.writeToFile(outf, "corrZ");
+  const int ephi = mGlobalCorrdRPhi.writeToFile(outf, "corrRPhi");
+  return er + ez + ephi;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalCorrectionsFromFile(TFile& inpf)
+{
+  mIsGlobalCorrSet = true;
+  mGlobalCorrdR.initFromFile(inpf, "corrR");
+  mGlobalCorrdZ.initFromFile(inpf, "corrZ");
+  mGlobalCorrdRPhi.initFromFile(inpf, "corrRPhi");
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalCorrections(TFile& outf) const
+{
+  if (!mIsLocalCorrSet) {
+    std::cout << "============== local corrections are not set! returning ==============" << std::endl;
+    return 0;
+  }
+  const int lCorrdR = mLocalCorrdR.writeToFile(outf, "lcorrR");
+  const int lCorrdZ = mLocalCorrdZ.writeToFile(outf, "lcorrZ");
+  const int lCorrdRPhi = mLocalCorrdRPhi.writeToFile(outf, "lcorrRPhi");
+  return lCorrdR + lCorrdZ + lCorrdRPhi;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalCorrectionsFromFile(TFile& inpf)
+{
+  mIsLocalCorrSet = true;
+  mLocalCorrdR.initFromFile(inpf, "lcorrR");
+  mLocalCorrdZ.initFromFile(inpf, "lcorrZ");
+  mLocalCorrdRPhi.initFromFile(inpf, "lcorrRPhi");
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalDistortions(TFile& outf) const
+{
+  if (!mIsLocalDistSet) {
+    std::cout << "============== local distortions are not set! returning ==============" << std::endl;
+    return 0;
+  }
+  const int lCorrdR = mLocalDistdR.writeToFile(outf, "ldistR");
+  const int lCorrdZ = mLocalDistdZ.writeToFile(outf, "ldistZ");
+  const int lCorrdRPhi = mLocalDistdRPhi.writeToFile(outf, "ldistRPhi");
+  return lCorrdR + lCorrdZ + lCorrdRPhi;
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalDistortionsFromFile(TFile& inpf)
+{
+  mIsLocalDistSet = true;
+  mLocalDistdR.initFromFile(inpf, "ldistR");
+  mLocalDistdZ.initFromFile(inpf, "ldistZ");
+  mLocalDistdRPhi.initFromFile(inpf, "ldistRPhi");
+}
+
+template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+DataT O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::regulatePhi(const DataT phi)
+{
+  const DataT twoPi = 2 * M_PI;
+  DataT phiTmp = phi;
+  while (phiTmp < 0.0) {
+    phiTmp += twoPi; // TODO USE O2 for twoPi
+  }
+  while (phiTmp > twoPi) {
+    phiTmp -= twoPi;
+  }
+  return phiTmp;
 }
 
 #endif

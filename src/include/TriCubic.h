@@ -473,8 +473,8 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const
   Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing()}; // needed for the grid index
 
   if (safe) {
-    mGridProperties.clampToGridCircular(posRel, mCircular);
-    mGridProperties.clampToGrid(posRel, mCircular);
+    mGridProperties.clampToGridCircularRel(posRel, mCircular);
+    mGridProperties.clampToGridRel(posRel, mCircular);
   } else {
     mGridProperties.checkStability(posRel, mCircular);
   }

@@ -30,7 +30,7 @@ template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsi
 struct RegularGrid3D {
 
  public:
-  RegularGrid3D(const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mSpacing{{spacingX, spacingY, spacingZ}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}}
+  RegularGrid3D(const DataT xmin, const DataT ymin, const DataT zmin, const DataT spacingX, const DataT spacingY, const DataT spacingZ) : mMin{{xmin, ymin, zmin}}, mMax{{xmin + (Nx - 1)  * spacingX, ymin + (Ny - 1) * spacingY, zmin + (Nz - 1)  * spacingZ }}, mSpacing{{spacingX, spacingY, spacingZ}}, mInvSpacing{{static_cast<DataT>(1 / spacingX), static_cast<DataT>(1 / spacingY), static_cast<DataT>(1 / spacingZ)}}
   {
     initLists();
   }
@@ -58,11 +58,6 @@ struct RegularGrid3D {
   /// \return returns if the index lies in the grid
   bool isIndexInGrid(const int index, const unsigned int dim) const { return index < 0 ? false : (index > (sNdim[dim] - 1) ? false : true); }
 
-  // check if the specified position for given dimension lies in the grid
-  /// \param pos query position
-  /// \return returns if the position lies in the grid
-  bool isInGrid(const DataT pos, const unsigned int dim) const;
-
   /// \param dim dimension of interest
   /// \return returns the number of vertices for given dimension for the grid
   static constexpr size_t getN(unsigned int dim) { return sNdim[dim]; }
@@ -80,9 +75,9 @@ struct RegularGrid3D {
   DataT getGridMinY() const { return mMin[FY]; }              /// \return returns the minimum coordinate of the grid in y dimension
   DataT getGridMinZ() const { return mMin[FZ]; }              /// \return returns the minimum coordinate of the grid in z dimension
 
-  DataT getGridMaxX() const { return mMin[FX] + getNX() / getInvSpacingX(); }
-  DataT getGridMaxY() const { return mMin[FY] + getNY() / getInvSpacingY(); }
-  DataT getGridMaxZ() const { return mMin[FZ] + getNZ() / getInvSpacingZ(); }
+  DataT getGridMaxX() const { return mMax[FX]; }
+  DataT getGridMaxY() const { return mMax[FY]; }
+  DataT getGridMaxZ() const { return mMax[FZ]; }
 
   /// \return returns the inversed spacing of the grid for all dimensions
   const Vector<DataT, 3>& getInvSpacing() const { return mInvSpacing; }
@@ -95,25 +90,21 @@ struct RegularGrid3D {
   /// \return returns clamped coordinate coordinate
   DataT clampToGrid(const DataT pos, const unsigned int dim) const;
 
+  // clamp coordinates to the grid (not circular)
+  /// \param pos query position which will be clamped
+  /// \return returns clamped coordinate coordinate
+  DataT clampToGridCircular(DataT pos, const unsigned int dim) const;
+
   // clamp coordinates to the grid (not circular) vectorized
   /// \param relPos query position which will be clamped in relative grid cooridnates
   /// \param circular Vector containing if a dimension is circular. e.g x=not circular, y=not circular, z=circular -> circular(0,0,1)
-  // template <size_t FDIM>
-  void clampToGrid(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const;
-
-  // clamp coordinate to the grid (circular)
-  /// \param relPos query position which will be clamped in relative grid cooridnates
-  /// \param dim dimension of relative position
-  /// \return returns the circular coordinate
-  DataT clampToGridCircular(DataT relPos, const unsigned int dim) const;
+  void clampToGridRel(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const;
 
   // clamp coordinates to the grid (circular)
   /// \param relPos query position which will be clamped in relative grid cooridnates
   /// \param circular Vector containing if a dimension is circular. e.g x=not circular, y=not circular, z=circular -> circular(0,0,1)
-  // template <size_t FDIM>
-  void clampToGridCircular(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const;
+  void clampToGridCircularRel(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const;
 
-  // template <size_t FDIM>
   void checkStability(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const;
 
   /// \param vertex in x dimension
@@ -134,7 +125,8 @@ struct RegularGrid3D {
   static constexpr unsigned int FY = 1;   // index for y coordinate
   static constexpr unsigned int FZ = 2;   // index for z coordinate
 
-  const Vector<DataT, FDIM> mMin{};                                            // min positions of grid
+  const Vector<DataT, FDIM> mMin{};                                            // min vertices positions of the grid
+  const Vector<DataT, FDIM> mMax{};                                            // max vertices positions of the grid
   const Vector<DataT, FDIM> mSpacing{};                                        //  spacing of the grid
   const Vector<DataT, FDIM> mInvSpacing{};                                     // inverse spacing of grid
   const inline static Vector<DataT, FDIM> sMaxIndex{{Nx - 1, Ny - 1, Nz - 1}}; // max index which is on the grid in all dimensions
@@ -149,31 +141,38 @@ struct RegularGrid3D {
   ClassDefNV(RegularGrid3D, 1)
 };
 
-template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
-bool RegularGrid3D<DataT, Nx, Ny, Nz>::isInGrid(const DataT pos, const unsigned int dim) const
-{
-  if (pos < mMin[dim]) {
-    return false;
-  } else if (pos > mMin[dim] + getN(dim) * mSpacing[dim]) {
-    return false;
-  }
-  return true;
-}
+///
+/// ========================================================================================================
+///       Inline implementations of some methods
+/// ========================================================================================================
+///
 
 template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
 DataT RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGrid(const DataT pos, const unsigned int dim) const
 {
   if (pos < mMin[dim]) {
     return mMin[dim];
-  } else if (pos > mMin[dim] + getN(dim) / mInvSpacing[dim]) {
-    return mMin[dim] + getN(dim) / mInvSpacing[dim];
+  } else if (pos > mMax[dim]) {
+    return mMax[dim];
   }
   return pos;
 }
 
 template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
-// template <size_t FDIM>
-void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGrid(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const
+DataT RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridCircular(DataT pos, const unsigned int dim) const
+{
+  while (pos < mMin[dim]) {
+    pos += mMax[dim] - mMin[dim] + mSpacing[dim];
+  }
+  while (pos >= mMax[dim] + mSpacing[dim]) {
+    pos -= mMax[dim] + mSpacing[dim] - mMin[dim];
+  }
+  return pos;
+}
+
+
+template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
+void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridRel(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const
 {
   for (size_t j = 0; j < relPos.getvectorsCount(); ++j) {
     auto vecTmp = relPos.getVector(j);
@@ -186,19 +185,7 @@ void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGrid(Vector<DataT, 3>& relPos, con
 }
 
 template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
-DataT RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridCircular(DataT relPos, const unsigned int dim) const
-{
-  while (relPos < 0) {
-    relPos += sNdim[dim];
-  }
-  while (relPos > sNdim[dim]) {
-    relPos -= sNdim[dim];
-  }
-  return relPos;
-}
-
-template <typename DataT, unsigned int Nx, unsigned int Ny, unsigned int Nz>
-void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridCircular(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const
+void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridCircularRel(Vector<DataT, 3>& relPos, const Vector<int, 3>& circular) const
 {
   for (size_t j = 0; j < relPos.getvectorsCount(); ++j) {
     auto vecTmp = (relPos.getVector(j));
@@ -207,12 +194,10 @@ void RegularGrid3D<DataT, Nx, Ny, Nz>::clampToGridCircular(Vector<DataT, 3>& rel
     while ((vecTmp * vecIsCircular < 0).count() > 0) {
       vecTmp = vecTmp + vecTmp3 * vecIsCircular;
     }
+    vecTmp(vecTmp * vecIsCircular == vecTmp3) = Vc::Vector<DataT>::Zero();
     while ((vecTmp * vecIsCircular > vecTmp3).count() > 0) {
       vecTmp = vecTmp - vecTmp3 * vecIsCircular;
     }
-    // numerical stability check
-    vecTmp(vecTmp * vecIsCircular == vecTmp3) = Vc::Vector<DataT>::Zero();
-
     relPos.setVector(j, vecTmp);
   }
 }

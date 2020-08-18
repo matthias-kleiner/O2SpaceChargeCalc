@@ -71,11 +71,11 @@ struct DataContainer3D {
   }
 
   /// set values from file
-  void initFromFile(TFile& inpf, const char* name = "data")
+  bool initFromFile(TFile& inpf, const char* name = "data")
   {
     if (inpf.IsZombie()) {
       std::cout << "Failed to read from file " << inpf.GetName() << std::endl;
-      return;
+      return false;
     }
     DataContainer3D<DataT, Nx, Ny, Nz>* dataCont{nullptr};
 
@@ -83,9 +83,10 @@ struct DataContainer3D {
     dataCont = reinterpret_cast<DataContainer3D<DataT, Nx, Ny, Nz>*>(inpf.GetObjectChecked(name, DataContainer3D<DataT, Nx, Ny, Nz>::Class()));
     if (!dataCont) {
       std::cout << "Failed to load " << name << " from " << inpf.GetName() << std::endl;
-      return;
+      return false;
     }
     memcpy(mData.get(), dataCont->mData.get(), dataCont->getNDataPoints() * sizeof(DataT));
+    return true;
   }
 
   /// get pointer to object from file

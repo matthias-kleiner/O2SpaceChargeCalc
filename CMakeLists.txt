@@ -22,6 +22,7 @@ set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3")
 
 find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
+find_package(CGAL REQUIRED)
 
 link_libraries(Vc::Vc)
 link_libraries(ROOT::Core)

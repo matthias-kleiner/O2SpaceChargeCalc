@@ -13,6 +13,26 @@
 template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsigned int Nz = 4>
 struct DataContainer3D {
 
+ public:
+  class iterator
+  {
+   public:
+    iterator(DataT* ptr) : ptr(ptr) {}
+    iterator operator++()
+    {
+      ++ptr;
+      return *this;
+    }
+    bool operator!=(const iterator& other) const { return ptr != other.ptr; }
+    const DataT& operator*() const { return *ptr; }
+
+   private:
+    DataT* ptr;
+  };
+
+  iterator begin() const { return iterator(mData.get()); }
+  iterator end() const { return iterator(mData.get() + FN); }
+
   DataContainer3D() = default;
 
   static constexpr size_t FN{Nx * Ny * Nz}; ///< number of values stored in the container
@@ -20,6 +40,8 @@ struct DataContainer3D {
   /// \param i index too data
   const DataT& operator[](size_t i) const { return mData[i]; }
   DataT& operator[](size_t i) { return mData[i]; }
+
+  DataT* data() { return mData.get(); }
 
   /// \param ix index in x dimension
   /// \param iy index in y dimension

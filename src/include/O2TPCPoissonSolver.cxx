@@ -24,22 +24,22 @@
 #include <numeric>
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
-  PoissonMultiGrid3D2D(matricesV, matricesCharge, symmetry);
+  poissonMultiGrid3D2D(matricesV, matricesCharge, symmetry);
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
   Info("PoissonMultiGrid3D2D", "%s", Form("in Poisson Solver 3D multiGrid semi coarsening Nr=%lu, cols=%lu, Nphi=%lu \n", Nr, Nz, Nphi));
 
   // Check that the number of Nr and Nz is suitable for a binary expansion
-  if (!IsPowerOfTwo((Nr - 1))) {
+  if (!isPowerOfTwo((Nr - 1))) {
     Error("PoissonMultiGrid3D2D", "Poisson3DMultiGrid - Error in the number of Nr. Must be 2**M + 1");
     return;
   }
-  if (!IsPowerOfTwo((Nz - 1))) {
+  if (!isPowerOfTwo((Nz - 1))) {
     Error("PoissonMultiGrid3D2D", "Poisson3DMultiGrid - Error in the number of Nz. Must be 2**N - 1");
     return;
   }
@@ -95,8 +95,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer
       std::move(matricesCharge.begin(), matricesCharge.end(), tvChargeFMG[count - 1].storage.data());
       std::move(matricesV.begin(), matricesV.end(), tvArrayV[count - 1].storage.data());
     } else {
-      Restrict3D(tvChargeFMG[count - 1], tvChargeFMG[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
-      RestrictBoundary3D(tvArrayV[count - 1], tvArrayV[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
+      restrict3D(tvChargeFMG[count - 1], tvChargeFMG[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
+      restrictBoundary3D(tvArrayV[count - 1], tvArrayV[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
     }
     iOne = 2 * iOne; // doubling
     jOne = 2 * jOne; // doubling
@@ -131,7 +131,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer
       coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
     }
     // relax on the coarsest level
-    Relax3D(tvArrayV[nLoop - 1], tvChargeFMG[nLoop - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
+    relax3D(tvArrayV[nLoop - 1], tvChargeFMG[nLoop - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
 
     // 2) Do multiGrid v-cycle from coarsest to finest
     for (int count = nLoop - 2; count >= 0; count--) {
@@ -142,7 +142,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer
       tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
       // 2) a) Interpolate potential for h -> 2h (coarse -> fine)
-      Interp3D(tvArrayV[count], tvArrayV[count + 1], tnRRow, tnZColumn, Nphi, Nphi);
+      interp3D(tvArrayV[count], tvArrayV[count + 1], tnRRow, tnZColumn, Nphi, Nphi);
 
       // 2) c) Copy the restricted charge to charge for calculation
       tvCharge[count] = tvChargeFMG[count]; //copy
@@ -153,9 +153,9 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer
         tvPrevArrayV[count] = tvArrayV[count];
 
         // 2) c) i) Call V cycle from grid count+1 (current fine level) to nLoop (coarsest)
-        VCycle3D2D(symmetry, count + 1, nLoop, mMgParameters.nPre, mMgParameters.nPost, ratioZ, ratioPhi, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
+        vCycle3D2D(symmetry, count + 1, nLoop, mMgParameters.nPre, mMgParameters.nPost, ratioZ, ratioPhi, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
 
-        const DataT convergenceError = GetConvergenceError(tvArrayV[count], tvPrevArrayV[count]);
+        const DataT convergenceError = getConvergenceError(tvArrayV[count], tvPrevArrayV[count]);
 
         if (count == 0) {
           mErrorConvergenceNormInf[mgCycle] = convergenceError;
@@ -174,7 +174,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::PoissonMultiGrid3D2D(DataContainer
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi,
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi,
                                                          std::vector<Matrix3D>& tvArrayV, std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1,
                                                          std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3, std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const
 {
@@ -204,11 +204,11 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, con
     //Info("VCycle3D2D","Before Pre-smoothing");
     // 1) Pre-Smoothing: Gauss-Seidel Relaxation or Jacobi
     for (int jPre = 1; jPre <= nPre; ++jPre) {
-      Relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
+      relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
     } // end pre smoothing
 
     // 2) Residue calculation
-    Residue3D(tvResidue[count - 1], tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, ih2, tempRatioZ, coefficient1, coefficient2, coefficient3, inverseCoefficient4);
+    residue3D(tvResidue[count - 1], tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, ih2, tempRatioZ, coefficient1, coefficient2, coefficient3, inverseCoefficient4);
 
     iOne = 2 * iOne;
     jOne = 2 * jOne;
@@ -216,7 +216,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, con
     tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
     //3) Restriction
-    Restrict3D(tvCharge[count], tvResidue[count - 1], tnRRow, tnZColumn, Nphi, Nphi);
+    restrict3D(tvCharge[count], tvResidue[count - 1], tnRRow, tnZColumn, Nphi, Nphi);
 
     //4) Zeroing coarser V
     std::fill(tvArrayV[count].storage.begin(), tvArrayV[count].storage.end(), 0);
@@ -240,7 +240,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, con
   }
 
   // 3) Relax on the coarsest grid
-  Relax3D(tvArrayV[gridTo - 1], tvCharge[gridTo - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
+  relax3D(tvArrayV[gridTo - 1], tvCharge[gridTo - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
 
   // back to fine
   for (int count = gridTo - 1; count >= gridFrom; --count) {
@@ -257,7 +257,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, con
     const DataT tempRatioZ = ratioZ * iOne2 / (jOne * jOne);
 
     // 4) Interpolation/Prolongation
-    AddInterp3D(tvArrayV[count - 1], tvArrayV[count], tnRRow, tnZColumn, Nphi, Nphi);
+    addInterp3D(tvArrayV[count - 1], tvArrayV[count], tnRRow, tnZColumn, Nphi, Nphi);
 
     for (int i = 1; i < tnRRow - 1; ++i) {
       const DataT radius = IFCRadius + i * h;
@@ -270,13 +270,13 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::VCycle3D2D(const int symmetry, con
 
     // 5) Post-Smoothing: Gauss-Seidel Relaxation
     for (int jPost = 1; jPost <= nPost; ++jPost) {
-      Relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
+      relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
     } // end post smoothing
   }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry,
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry,
                                                         const DataT ih2, const DataT tempRatioZ, const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& inverseCoefficient4) const
 {
 #pragma omp parallel for // parallising this loop is possible - but makes it a little slower (why? overhead?)-
@@ -325,7 +325,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Residue3D(Matrix3D& residue, const
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Interp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::interp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // Do restrict 2 D for each slice
   if (newPhiSlice == 2 * oldPhiSlice) {
@@ -383,13 +383,13 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Interp3D(Matrix3D& matricesCurrent
   } else {
 #pragma omp parallel for
     for (int m = 0; m < newPhiSlice; m++) {
-      Interp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
+      interp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
   }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Interp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::interp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int j = 2; j < tnZColumn - 1; j += 2) {
     for (int i = 2; i < tnRRow - 1; i += 2) {
@@ -420,7 +420,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Interp2D(Matrix3D& matricesCurrent
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::AddInterp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // Do restrict 2 D for each slice
   if (newPhiSlice == 2 * oldPhiSlice) {
@@ -477,13 +477,13 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::AddInterp3D(Matrix3D& matricesCurr
   } else {
 #pragma omp parallel for
     for (int m = 0; m < newPhiSlice; m++) {
-      AddInterp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
+      addInterp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
   }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::AddInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int j = 2; j < tnZColumn - 1; j += 2) {
     for (int i = 2; i < tnRRow - 1; i += 2) {
@@ -520,7 +520,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::AddInterp2D(Matrix3D& matricesCurr
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2,
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2,
                                                       const DataT tempRatioZ, const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& coefficient4) const
 {
   // Gauss-Seidel (Read Black}
@@ -620,7 +620,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Relax3D(Matrix3D& matricesCurrentV
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::RestrictBoundary3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // in case of full 3d and the Nphi is also coarsening
   if (2 * newPhiSlice == oldPhiSlice) {
@@ -639,13 +639,13 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::RestrictBoundary3D(Matrix3D& matri
     } // end phis
   } else {
     for (int m = 0; m < newPhiSlice; ++m) {
-      RestrictBoundary2D(matricesCurrentCharge, residue, tnRRow, tnZColumn, m);
+      restrictBoundary2D(matricesCurrentCharge, residue, tnRRow, tnZColumn, m);
     }
   }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::RestrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   // for boundary
   for (int j = 0, jj = 0; j < tnZColumn; ++j, jj += 2) {
@@ -661,7 +661,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::RestrictBoundary2D(Matrix3D& matri
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Restrict3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   if (2 * newPhiSlice == oldPhiSlice) {
     int mm = 0;
@@ -714,13 +714,13 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Restrict3D(Matrix3D& matricesCurre
 
   } else {
     for (int m = 0; m < newPhiSlice; m++) {
-      Restrict2D(matricesCurrentCharge, residue, tnRRow, tnZColumn, m);
+      restrict2D(matricesCurrentCharge, residue, tnRRow, tnZColumn, m);
     }
   }
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Restrict2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
+void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int i = 1, ii = 2; i < tnRRow - 1; i++, ii += 2) {
     for (int j = 1, jj = 2; j < tnZColumn - 1; j++, jj += 2) {
@@ -753,7 +753,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::Restrict2D(Matrix3D& matricesCurre
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-bool O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::IsPowerOfTwo(int i) const
+bool O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::isPowerOfTwo(int i) const
 {
   int j = 0;
   while (i > 0) {
@@ -767,7 +767,7 @@ bool O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::IsPowerOfTwo(int i) const
 }
 
 template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DataT O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::GetConvergenceError(const Matrix3D& matricesCurrentV, Matrix3D& prevArrayV) const
+DataT O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::getConvergenceError(const Matrix3D& matricesCurrentV, Matrix3D& prevArrayV) const
 {
   DataT errorArr[Nphi]{};
 

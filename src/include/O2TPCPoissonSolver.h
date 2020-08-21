@@ -54,7 +54,7 @@ class O2TPCPoissonSolver
   ///
   /// \pre Charge density distribution in **matricesCharge** is known and boundary values for **matricesV** are set
   /// \post Numerical solution for potential distribution is calculated and stored in each rod at **matricesV**
-  void PoissonSolver3D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
+  void poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
 
   static constexpr DataT TPCZ0{249.7};                          ///< nominal gating grid position
   static constexpr DataT IFCRadius{83.5};                       ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
@@ -93,7 +93,7 @@ class O2TPCPoissonSolver
   /// \param Nz int number of grid in Nz (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1
   /// \param Nphi const int phi slices
   ///
-  DataT GetConvergenceError(const Matrix3D& currentMatricesV, Matrix3D& prevArrayV) const;
+  DataT getConvergenceError(const Matrix3D& currentMatricesV, Matrix3D& prevArrayV) const;
 
   /// 3D - Solve Poisson's Equation in 3D by MultiGrid with constant phi slices
   ///
@@ -124,7 +124,7 @@ class O2TPCPoissonSolver
   ///    SYMMETRY = 0 if no phi symmetries, and no phi boundary condition
   ///    = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
   ///
-  void PoissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
+  void poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
 
   /// Restrict2D
   ///
@@ -142,7 +142,7 @@ class O2TPCPoissonSolver
   /// \param tnZColumn number of bins in z direction of TPC
   /// \param iphi phi bin
   ///
-  void Restrict2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void restrict2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
 
   /// Restriction in 3D
   ///
@@ -162,7 +162,7 @@ class O2TPCPoissonSolver
   /// \param newPhiSlice int number of Nphi (in phi-direction) for coarser grid
   /// \param oldPhiSlice int number of Nphi (in phi-direction) for finer grid
   ///
-  void Restrict3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void restrict3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
 
   /// Restrict Boundary in 3D
   ///
@@ -175,7 +175,7 @@ class O2TPCPoissonSolver
   /// \param newPhiSlice int number of Nphi (in phi-direction) for coarser grid
   /// \param oldPhiSlice int number of Nphi (in phi-direction) for finer grid
   ///
-  void RestrictBoundary3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void restrictBoundary3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
 
   /// Relax3D
   ///
@@ -198,7 +198,7 @@ class O2TPCPoissonSolver
   /// \param coefficient3 std::vector<float> coefficient for z
   /// \param coefficient4 std::vector<float> coefficient for f(r,\phi,z)
   ///
-  void Relax3D(Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2, const DataT tempRatioZ,
+  void relax3D(Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2, const DataT tempRatioZ,
                const std::array<DataT, Nr>& vectorCoefficient1, const std::array<DataT, Nr>& vectorCoefficient2, const std::array<DataT, Nr>& vectorCoefficient3, const std::array<DataT, Nr>& vectorCoefficient4) const;
 
   /// Interpolation/Prolongation in 2D
@@ -216,7 +216,7 @@ class O2TPCPoissonSolver
   /// \param tnRRow int number of grid in Nr (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
   /// \param tnZColumn int number of grid in Nz (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1
   ///
-  void Interp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void interp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
 
   /// Interpolation/Prolongation in 3D
   ///
@@ -236,7 +236,7 @@ class O2TPCPoissonSolver
   /// \param newPhiSlice int number of Nphi (in phi-direction) for coarser grid
   /// \param oldPhiSlice int number of Nphi (in phi-direction) for finer grid
   ///
-  void Interp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void interp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
 
   /// Prolongation with Addition for 3D
   ///
@@ -251,7 +251,7 @@ class O2TPCPoissonSolver
   /// \param newPhiSlice int number of Nphi (in phi-direction) for coarser grid
   /// \param oldPhiSlice int number of Nphi (in phi-direction) for finer grid
   ///
-  void AddInterp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void addInterp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
 
   /// Prolongation with Addition for 2D
   ///
@@ -263,7 +263,7 @@ class O2TPCPoissonSolver
   /// \param tnRRow int number of grid in Nr (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
   /// \param tnZColumn int number of grid in Nz (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1a
   ///
-  void AddInterp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void addInterp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
 
   /// VCycle 3D2D, V Cycle 3D in multiGrid with constant Nphi
   /// fine-->coarsest-->fine, propagating the residue to correct initial guess of V
@@ -295,7 +295,7 @@ class O2TPCPoissonSolver
   /// \param coefficient4 std::vector<float>& coefficient for relaxation (ratio for grid_r)
   /// \param inverseCoefficient4 std::vector<float>& coefficient for relaxation (inverse coefficient4)
   ///
-  void VCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi, std::vector<Matrix3D>& tvArrayV,
+  void vCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi, std::vector<Matrix3D>& tvArrayV,
                   std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& vectorCoefficient1, std::array<DataT, Nr>& vectorCoefficient2, std::array<DataT, Nr>& vectorCoefficient3,
                   std::array<DataT, Nr>& vectorCoefficient4, std::array<DataT, Nr>& vectorInverseCoefficient4) const;
 
@@ -321,7 +321,7 @@ class O2TPCPoissonSolver
   /// \param coefficient3 std::vector<float> coefficient for z
   /// \param inverseCoefficient4 std::vector<float> inverse coefficient for f(r,\phi,z)
   ///
-  void Residue3D(Matrix3D& residue, const Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT ih2, const DataT tempRatio,
+  void residue3D(Matrix3D& residue, const Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT ih2, const DataT tempRatio,
                  const std::array<DataT, Nr>& vectorCoefficient1, const std::array<DataT, Nr>& vectorCoefficient2, const std::array<DataT, Nr>& vectorCoefficient3, const std::array<DataT, Nr>& vectorInverseCoefficient4) const;
 
   /// RestrictBoundary2D
@@ -334,12 +334,12 @@ class O2TPCPoissonSolver
   /// \param tnZColumn const int number of tnZColumn in z direction of TPC
   /// \param iphi phi bin
   ///
-  void RestrictBoundary2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void restrictBoundary2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
 
   /// Helper function to check if the integer is equal to a power of two
   /// \param i int the number
   /// \return 1 if it is a power of two, else 0
-  bool IsPowerOfTwo(int i) const;
+  bool isPowerOfTwo(int i) const;
 };
 
 #endif

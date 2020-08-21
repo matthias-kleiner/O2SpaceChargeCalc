@@ -11,19 +11,15 @@
 /// \file O2TPCPoissonSolver.h
 /// \brief This class provides implementation of Poisson Eq
 /// solver by MultiGrid Method
+/// Old version of this class can be found in the AliTPCPoissonSolver.h
 ///
 ///
-///
-/// \author Rifki Sadikin <rifki.sadikin@cern.ch>, Indonesian Institute of Sciences
-/// \date Nov 20, 2017
+/// \author  Matthias Kleiner <matthias.kleiner@cern.ch>
+/// \date Aug 21, 2020
 
 #ifndef O2TPCPOISSONSOLVER_H
 #define O2TPCPOISSONSOLVER_H
 
-#include <TNamed.h>
-#include "TMatrixD.h"
-#include "TVectorD.h"
-#include "Rtypes.h"
 #include "DataContainer3D.h"
 
 #include <iostream>
@@ -139,56 +135,33 @@ class O2TPCPoissonSolver : public TNamed
 
   /// constructor
   ///
-  O2TPCPoissonSolver() : TNamed("poisson solver", "solver"),
-                         fErrorConvergenceNorm2{new TVectorD(fMgParameters.nMGCycle)},
-                         fErrorConvergenceNormInf{new TVectorD(fMgParameters.nMGCycle)},
-                         fError{new TVectorD(fMgParameters.nMGCycle)}
+  O2TPCPoissonSolver() : fErrorConvergenceNormInf(fMgParameters.nMGCycle) {}
 
-  {
-    // default strategy
-  }
+  void PoissonSolver3D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
 
-  void PoissonSolver3D(DataContainer& matricesV, DataContainer& matricesChargeDensities,
-                       int maxIterations, int symmetry);
+  void PoissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
+  void Restrict2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void Restrict3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void RestrictBoundary3D(Matrix3D& matricesCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void Relax3D(Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2, const DataT tempRatioZ,
+               const std::vector<DataT>& vectorCoefficient1, const std::vector<DataT>& vectorCoefficient2, const std::vector<DataT>& vectorCoefficient3, const std::vector<DataT>& vectorCoefficient4) const;
 
-  void PoissonMultiGrid3D2D(DataContainer& matricesV, DataContainer& matricesChargeDensities, int symmetry);
-  void Restrict2D(Matrix3D& matrixCharge, Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi);
-  void Restrict3D(Matrix3D& matricesCharge, Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice);
-  void RestrictBoundary3D(Matrix3D& matricesCharge, Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice);
-  void Relax3D(Matrix3D& currentMatricesV, Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn,
-               const int symmetry, const Float_t h2, const Float_t tempRatioZ,
-               std::vector<float>& vectorCoefficient1, std::vector<float>& vectorCoefficient2,
-               std::vector<float>& vectorCoefficient3,
-               std::vector<float>& vectorCoefficient4);
+  void Interp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
+  void Interp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void AddInterp3D(Matrix3D& currentMatricesV, const Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const;
+  void AddInterp2D(Matrix3D& matrixV, const Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi) const;
 
-  void Interp2D(Matrix3D& matrixV, Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi);
-  void Interp3D(Matrix3D& currentMatricesV, Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice);
-  void AddInterp3D(Matrix3D& currentMatricesV, Matrix3D& currentMatricesVC, const int tnRRow, const int tnZColumn,
-                   const int newPhiSlice, const int oldPhiSlice);
-  void AddInterp2D(Matrix3D& matrixV, Matrix3D& matrixVC, const int tnRRow, const int tnZColumn, const int iphi);
+  void VCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi, std::vector<Matrix3D>& tvArrayV,
+                  std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::vector<DataT>& vectorCoefficient1, std::vector<DataT>& vectorCoefficient2, std::vector<DataT>& vectorCoefficient3,
+                  std::vector<DataT>& vectorCoefficient4, std::vector<DataT>& vectorInverseCoefficient4) const;
 
-  void VCycle3D2D(const int symmetry,
-                  const int gridFrom, const int gridTo, const int nPre, const int nPost,
-                  const DataT ratioZ, const DataT ratioPhi, std::vector<Matrix3D>& tvArrayV,
-                  std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue,
-                  std::vector<float>& vectorCoefficient1,
-                  std::vector<float>& vectorCoefficient2, std::vector<float>& vectorCoefficient3,
-                  std::vector<float>& vectorCoefficient4,
-                  std::vector<float>& vectorInverseCoefficient4);
+  void Residue3D(Matrix3D& residue, const Matrix3D& currentMatricesV, const Matrix3D& matricesCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT ih2, const DataT tempRatio,
+                 const std::vector<DataT>& vectorCoefficient1, const std::vector<DataT>& vectorCoefficient2, const std::vector<DataT>& vectorCoefficient3, const std::vector<DataT>& vectorInverseCoefficient4) const;
 
-  void Residue3D(Matrix3D& residue, Matrix3D& currentMatricesV, Matrix3D& matricesCharge, const int tnRRow,
-                 const int tnZColumn, const int symmetry, const DataT ih2,
-                 const DataT tempRatio, std::vector<float>& vectorCoefficient1,
-                 std::vector<float>& vectorCoefficient2,
-                 std::vector<float>& vectorCoefficient3, std::vector<float>& vectorInverseCoefficient4);
+  void RestrictBoundary2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
 
-  void RestrictBoundary2D(Matrix3D& matrixCharge, Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi);
-
-  int IsPowerOfTwo(int i) const;
-  Double_t GetConvergenceError(Matrix3D& currentMatricesV, Matrix3D& prevArrayV);
-  Double_t GetExactError(DataContainer& currentMatricesV, Matrix3D& tempArrayV);
-
-  // Double_t GetMaxExact() { return fMaxExact; };
+  bool IsPowerOfTwo(int i) const;
+  DataT GetConvergenceError(const Matrix3D& currentMatricesV, Matrix3D& prevArrayV) const;
 
   static constexpr DataT fgkTPCZ0{249.7};                          ///< nominal gating grid position
   static constexpr DataT fgkIFCRadius{83.5};                       ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
@@ -212,14 +185,9 @@ class O2TPCPoissonSolver : public TNamed
 
   static constexpr DataT fgExactErr{1e-4};      ///< Error tolerated
   inline static DataT fgConvergenceError{1e-3}; ///< Error tolerated
-  int fIterations;                            ///< number of maximum iteration
+  int fIterations;                              ///< number of maximum iteration
   MGParameters fMgParameters;                   ///< parameters multi grid
-  TVectorD* fErrorConvergenceNorm2;             ///< for storing convergence error  norm2
-  TVectorD* fErrorConvergenceNormInf;           ///< for storing convergence error normInf
-  TVectorD* fError;                             ///< for storing error
-  Matrix3D fExactSolution;                      //!<! Pointer to exact solution // TODO CHECK THIS!!!
-  // Double_t fMaxExact;
-  Bool_t fExactPresent = kFALSE;
+  std::vector<DataT> fErrorConvergenceNormInf{}; ///< for storing convergence error normInf
 
  private:
 };

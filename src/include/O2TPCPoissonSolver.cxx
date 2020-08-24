@@ -361,7 +361,7 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::interp3D(Matrix3D& matricesCurrent
     }
 
   } else {
-    #pragma omp parallel for // no change
+#pragma omp parallel for // no change
     for (int m = 0; m < newPhiSlice; m++) {
       interp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
@@ -467,7 +467,7 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::addInterp3D(Matrix3D& matricesCurr
     }
 
   } else {
-    #pragma omp parallel for // no change
+#pragma omp parallel for // no change
     for (int m = 0; m < newPhiSlice; m++) {
       addInterp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
@@ -766,7 +766,7 @@ DataT O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::getConvergenceError(const Matrix3
   // subtract the two matrices
   std::transform(prevArrayV.storage.begin(), prevArrayV.storage.end(), matricesCurrentV.storage.begin(), prevArrayV.storage.begin(), std::minus<DataT>());
 
-  #pragma omp parallel for // parallising this loop is possible - but using more than 2 cores makes it slower -
+#pragma omp parallel for // parallising this loop is possible - but using more than 2 cores makes it slower -
   for (unsigned int m = 0; m < Nphi; m++) {
     // square each entry in the vector and sum them up
     const auto phiStep = prevArrayV.nX * prevArrayV.nY; // number of points in one phi slice
@@ -776,6 +776,19 @@ DataT O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::getConvergenceError(const Matrix3
   }
   // return largest error
   return *std::max_element(errorArr, errorArr + Nphi);
+}
+
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::calcCoefficients(unsigned int from, unsigned int to, const DataT h, const DataT tempRatioZ, const DataT tempRatioPhi, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3, std::array<DataT, Nr>& coefficient4) const
+{
+  for (unsigned int i = from; i < to; ++i) {
+    const DataT radiusInv = 1. / (TPCParameters<DataT>::IFCRADIUS + i * h);
+    const DataT hRadiusTmp = h * 0.5 * radiusInv;
+    coefficient1[i] = 1.0 + hRadiusTmp;
+    coefficient2[i] = 1.0 - hRadiusTmp;
+    coefficient3[i] = tempRatioPhi * radiusInv * radiusInv;
+    coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
+  }
 }
 
 template class o2::tpc::O2TPCPoissonSolver<float, 17, 17, 90>;

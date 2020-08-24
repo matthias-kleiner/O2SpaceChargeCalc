@@ -13,8 +13,8 @@
 ///
 /// \author  Matthias Kleiner <matthias.kleiner@cern.ch>
 
-#ifndef TRI_H
-#define TRI_H
+#ifndef TRICUBIC_H
+#define TRICUBIC_H
 
 #include "Vector.h"
 #include "RegularGrid3D.h"
@@ -34,7 +34,8 @@ namespace tpc
 /// The calculated coefficient is then stored for only the last cell and will be reused if the next query point lies in the same cell.
 ///
 ///
-///  --- creation of a tricubic interpolator ---
+///  ----- creation of a tricubic interpolator -----
+///
 ///  // define the grid:
 ///  // define number of vertices per dimension
 ///  const int xvertices = 40;
@@ -126,7 +127,7 @@ class TriCubicInterpolator
     return res;
   }
 
-  // interpolate derivative at given coordinate
+  /// interpolate derivative at given coordinate
   /// \param x x coordinate
   /// \param y y coordinate
   /// \param z z coordinate
@@ -162,7 +163,8 @@ class TriCubicInterpolator
   }
 
  private:
-  // matrix needed to compute the coefficients
+
+  // matrix containing the 'relationship between the derivatives at the corners of the elements and the coefficients'
   inline static Vc::Memory<VDataT, 64> sMat[64]{
     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -227,7 +229,7 @@ class TriCubicInterpolator
     {4, 0, -4, 0, -4, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, -2, 0, -2, 0, 2, 0, -2, 0, 2, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
     {0, 0, 0, 0, 0, 0, 0, 0, 4, 0, -4, 0, -4, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, -2, 0, -2, 0, 2, 0, -2, 0, 2, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0},
     {-12, 12, 12, -12, 12, -12, -12, 12, -8, -4, 8, 4, 8, 4, -8, -4, -6, 6, -6, 6, 6, -6, 6, -6, -6, 6, 6, -6, -6, 6, 6, -6, -4, -2, -4, -2, 4, 2, 4, 2, -4, -2, 4, 2, -4, -2, 4, 2, -3, 3, -3, 3, -3, 3, -3, 3, -2, -1, -2, -1, -2, -1, -2, -1},
-    {8, -8, -8, 8, -8, 8, 8, -8, 4, 4, -4, -4, -4, -4, 4, 4, 4, -4, 4, -4, -4, 4, -4, 4, 4, -4, -4, 4, 4, -4, -4, 4, 2, 2, 2, 2, -2, -2, -2, -2, 2, 2, -2, -2, 2, 2, -2, -2, 2, -2, 2, -2, 2, -2, 2, -2, 1, 1, 1, 1, 1, 1, 1, 1}};
+    {8, -8, -8, 8, -8, 8, 8, -8, 4, 4, -4, -4, -4, -4, 4, 4, 4, -4, 4, -4, -4, 4, -4, 4, 4, -4, -4, 4, 4, -4, -4, 4, 2, 2, 2, 2, -2, -2, -2, -2, 2, 2, -2, -2, 2, 2, -2, -2, 2, -2, 2, -2, 2, -2, 2, -2, 1, 1, 1, 1, 1, 1, 1, 1}}; ///< matrix containing the 'relationship between the derivatives at the corners of the elements and the coefficients'
 
   inline static Matrix<DataT, 64> sMatrixA{sMat}; ///< this matrix is used for vectorized operations with the 64*64 matrix
 
@@ -244,7 +246,7 @@ class TriCubicInterpolator
   const int mNThreads{omp_get_max_threads()};                                                    ///< number of threads the tricubic interpolator can be used with
 
   std::unique_ptr<Vector<DataT, 64>[]> mCoefficients = std::make_unique<Vector<DataT, 64>[]>(mNThreads);              ///< coefficients needed to interpolate a value
-  std::unique_ptr<Vector<unsigned int, FDim>[]> mLastInd = std::make_unique<Vector<unsigned int, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for one-the last cell are stored)
+  std::unique_ptr<Vector<unsigned int, FDim>[]> mLastInd = std::make_unique<Vector<unsigned int, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for the last cell are stored)
   std::unique_ptr<bool[]> mInitialized = std::make_unique<bool[]>(mNThreads);                                         ///< sets the flag if the coefficients are evaluated at least once
 
   // use std::pow?
@@ -497,60 +499,24 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3
 
   const DataT valX[4]{vals0[FX], pos[FX], vals2[FX], vals3[FX]};
   const Vector<DataT, 64> vecValX{
-    {valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3]}};
+    {valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
+     valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
+     valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
+     valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],valX[0], valX[1], valX[2], valX[3]}};
 
   const DataT valY[4]{vals0[FY], pos[FY], vals2[FY], vals3[FY]};
   const Vector<DataT, 64> vecValY{
-    {valY[0], valY[0], valY[0], valY[0],
-     valY[1], valY[1], valY[1], valY[1],
-     valY[2], valY[2], valY[2], valY[2],
-     valY[3], valY[3], valY[3], valY[3],
-     valY[0], valY[0], valY[0], valY[0],
-     valY[1], valY[1], valY[1], valY[1],
-     valY[2], valY[2], valY[2], valY[2],
-     valY[3], valY[3], valY[3], valY[3],
-     valY[0], valY[0], valY[0], valY[0],
-     valY[1], valY[1], valY[1], valY[1],
-     valY[2], valY[2], valY[2], valY[2],
-     valY[3], valY[3], valY[3], valY[3],
-     valY[0], valY[0], valY[0], valY[0],
-     valY[1], valY[1], valY[1], valY[1],
-     valY[2], valY[2], valY[2], valY[2],
-     valY[3], valY[3], valY[3], valY[3]}};
+    {valY[0], valY[0], valY[0], valY[0], valY[1], valY[1], valY[1], valY[1], valY[2], valY[2], valY[2], valY[2], valY[3], valY[3], valY[3], valY[3],
+     valY[0], valY[0], valY[0], valY[0], valY[1], valY[1], valY[1], valY[1], valY[2], valY[2], valY[2], valY[2], valY[3], valY[3], valY[3], valY[3],
+     valY[0], valY[0], valY[0], valY[0], valY[1], valY[1], valY[1], valY[1], valY[2], valY[2], valY[2], valY[2], valY[3], valY[3], valY[3], valY[3],
+     valY[0], valY[0], valY[0], valY[0], valY[1], valY[1], valY[1], valY[1], valY[2], valY[2], valY[2], valY[2], valY[3], valY[3], valY[3], valY[3]}};
 
   const DataT valZ[4]{vals0[FZ], pos[FZ], vals2[FZ], vals3[FZ]};
   const Vector<DataT, 64> vecValZ{
-    {valZ[0], valZ[0], valZ[0], valZ[0],
-     valZ[0], valZ[0], valZ[0], valZ[0],
-     valZ[0], valZ[0], valZ[0], valZ[0],
-     valZ[0], valZ[0], valZ[0], valZ[0],
-     valZ[1], valZ[1], valZ[1], valZ[1],
-     valZ[1], valZ[1], valZ[1], valZ[1],
-     valZ[1], valZ[1], valZ[1], valZ[1],
-     valZ[1], valZ[1], valZ[1], valZ[1],
-     valZ[2], valZ[2], valZ[2], valZ[2],
-     valZ[2], valZ[2], valZ[2], valZ[2],
-     valZ[2], valZ[2], valZ[2], valZ[2],
-     valZ[2], valZ[2], valZ[2], valZ[2],
-     valZ[3], valZ[3], valZ[3], valZ[3],
-     valZ[3], valZ[3], valZ[3], valZ[3],
-     valZ[3], valZ[3], valZ[3], valZ[3],
-     valZ[3], valZ[3], valZ[3], valZ[3]}};
+    {valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0], valZ[0],
+     valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1], valZ[1],
+     valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2], valZ[2],
+     valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3], valZ[3]}};
 
   // result = f(x,y,z) = \sum_{i,j,k=0}^3 a_{ijk}    * x^{i}   * y^{j}   * z^{k}
   const DataT result = sum(mCoefficients[sThreadnum] * vecValX * vecValY * vecValZ);
@@ -561,7 +527,6 @@ template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
 {
   Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing()}; // needed for the grid index
-
   if (safe) {
     mGridProperties.clampToGridCircularRel(posRel, mCircular);
     mGridProperties.clampToGridRel(posRel, mCircular);
@@ -572,8 +537,8 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const
   const unsigned int ix = static_cast<unsigned int>(posRel[FX]);
   const unsigned int iy = static_cast<unsigned int>(posRel[FY]);
   const unsigned int iz = static_cast<unsigned int>(posRel[FZ]);
-
   const Vector<unsigned int, FDim> index{{ix, iy, iz}};
+
   if (!mInitialized[sThreadnum] || !(mLastInd[sThreadnum] == index)) {
     initInterpolator(index[FX], index[FY], index[FZ]);
   }

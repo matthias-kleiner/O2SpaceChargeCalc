@@ -22,25 +22,33 @@
 
 #include "DataContainer3D.h"
 #include "O2TPCPoissonSolverStructs.h"
+#include "RegularGrid3D.h"
+
+namespace o2
+{
+namespace tpc
+{
+
+/// The O2TPCPoissonSolver class represents methods to solve the poisson equation.
 
 /// \tparam DataT the type of data which is used during the calculations
 /// \tparam Nr number of vertices in r direction
 /// \tparam Nz number of vertices in z direction
 /// \tparam Nphi number of vertices in phi direction
-template <typename DataT = float, size_t Nr = 129, size_t Nz = 129, size_t Nphi = 180>
+template <typename DataT = float, size_t Nz = 129, size_t Nr = 129, size_t Nphi = 180>
 class O2TPCPoissonSolver
 {
  public:
-  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
+  using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nz, Nr, Nphi>;
   using Matrix3D = Matrix3D<DataT>;
 
-  /// constructor
-  ///
-  O2TPCPoissonSolver() : mErrorConvergenceNormInf(mMgParameters.nMGCycle) {}
+  /// default constructor
+  O2TPCPoissonSolver(const RegularGrid& gridProperties) : mGrid3D{gridProperties} {};
 
   /// Provides poisson solver in Cylindrical 3D (TPC geometry)
   ///
-  /// Strategy based on parameter settings (fStrategy and mMgParameters)provided
+  /// Strategy based on parameter settings (mMgParameters)provided
   /// * Cascaded multi grid with S.O.R
   /// * Geometric MultiGrid
   ///		* Cycles: V, W, Full
@@ -48,41 +56,22 @@ class O2TPCPoissonSolver
   ///		* Grid transfer operators: Full, Half
   /// * Spectral Methods (TODO)
   ///
-  /// \param matricesV potential in 3D matrix
-  /// \param matricesCharge charge density in 3D matrix (side effect)
+  /// \param matricesV potential in 3D
+  /// \param matricesChargeDensities charge density in 3D (side effect)
   /// \param symmetry symmetry or not
   ///
-  /// \pre Charge density distribution in **matricesCharge** is known and boundary values for **matricesV** are set
+  /// \pre Charge density distribution in **matricesChargeDensities** is known and boundary values for **matricesV** are set
   /// \post Numerical solution for potential distribution is calculated and stored in each rod at **matricesV**
   void poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesChargeDensities, const int symmetry);
 
-  static constexpr DataT TPCZ0{249.7};                          ///< nominal gating grid position
-  static constexpr DataT IFCRadius{83.5};                       ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
-  static constexpr DataT OFCRadius{254.5};                      ///< Mean Radius of the Outer Field Cage (252.55 min, 256.45 max) (cm)
-  static constexpr DataT ZOffSet{0.2};                          ///< Offset from CE: calculate all distortions closer to CE as if at this point
-  static constexpr DataT CATHODEV{-100000.0};                   ///< Cathode Voltage (volts)
-  static constexpr DataT GG{-70.0};                             ///< Gating Grid voltage (volts)
-  static constexpr DataT DVDE{0.0024};                          ///< [cm/V] drift velocity dependency on the E field (from Magboltz for NeCO2N2 at standard environment)
-  static constexpr DataT EM{-1.602176487e-19 / 9.10938215e-31}; ///< charge/mass in [C/kg]
-  static constexpr DataT E0{8.854187817e-12};                   ///< vacuum permittivity [A·s/(V·m)]
-
-  static constexpr DataT RMIN = IFCRadius;                        ///< min radius
-  static constexpr DataT ZMIN = 0;                                ///< min z coordinate
-  static constexpr DataT PHIMIN = 0;                              ///< min phi coordinate
-  static constexpr DataT RMAX = OFCRadius;                        ///< max radius
-  static constexpr DataT ZMAX = TPCZ0;                            ///< max z coordinate
-  static constexpr DataT PHIMAX = 2 * M_PI;                       ///< max phi coordinate // TODO CHANGE TO O2
-  static constexpr DataT GRIDSPACINGR = (RMAX - RMIN) / (Nr - 1); ///< grid spacing in r direction
-  static constexpr DataT GRIDSPACINGZ = (ZMAX - ZMIN) / (Nz - 1); ///< grid spacing in z direction
-  static constexpr DataT GRIDSPACINGPHI = PHIMAX / Nphi;          ///< grid spacing in phi direction
-
   inline static DataT sConvergenceError{1e-3}; ///< Error tolerated
 
+  DataT getSpacingZ() const { return mGrid3D.getSpacingX(); }
+  DataT getSpacingR() const { return mGrid3D.getSpacingY(); }
+  DataT getSpacingPhi() const { return mGrid3D.getSpacingZ(); }
+
  private:
-  // static constexpr DataT EXACTERR{1e-4};      ///< Error tolerated
-  int mIterations{};                             ///< number of maximum iteration
-  MGParameters mMgParameters{};                  ///< parameters multi grid
-  std::vector<DataT> mErrorConvergenceNormInf{}; ///< for storing convergence error normInf
+  const RegularGrid& mGrid3D{}; ///< grid properties. member is set in O2TPCSpaceCharge3DCalc
 
   ///
   /// Relative error calculation: comparison with exact solution
@@ -336,10 +325,27 @@ class O2TPCPoissonSolver
   ///
   void restrictBoundary2D(Matrix3D& matrixCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
 
+  // calculate coefficients
+  void calcCoefficients(unsigned int from, unsigned int to, const DataT h, const DataT tempRatioZ, const DataT tempRatioPhi, std::array<DataT, Nr>& coefficient1,
+                        std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3, std::array<DataT, Nr>& coefficient4) const
+  {
+    for (unsigned int i = from; i < to; ++i) {
+      const DataT radiusInv = 1. / (TPCParameters<DataT>::IFCRADIUS + i * h);
+      const DataT hRadiusTmp = h * 0.5 * radiusInv;
+      coefficient1[i] = 1.0 + hRadiusTmp;
+      coefficient2[i] = 1.0 - hRadiusTmp;
+      coefficient3[i] = tempRatioPhi * radiusInv * radiusInv;
+      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
+    }
+  }
+
   /// Helper function to check if the integer is equal to a power of two
   /// \param i int the number
   /// \return 1 if it is a power of two, else 0
   bool isPowerOfTwo(int i) const;
 };
+
+} // namespace tpc
+} // namespace o2
 
 #endif

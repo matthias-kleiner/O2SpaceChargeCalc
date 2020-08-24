@@ -97,9 +97,9 @@ struct AnalyticalFields {
 
 template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
 struct NumericalFields {
-  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
-  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
-  using TriCubic = TriCubicInterpolator<DataT, Nr, Nz, Nphi>;
+  using RegularGrid = o2::tpc::RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nz, Nr, Nphi>;
+  using TriCubic = o2::tpc::TriCubicInterpolator<DataT, Nz, Nr, Nphi>;
   NumericalFields(const DataContainer& gridErTmp, const DataContainer& gridEzTmp, const DataContainer& gridEphiTmp, const RegularGrid& gridProperties, const o2::tpc::Side sideTmp) : gridEr{gridErTmp}, gridEz{gridEzTmp}, gridEphi{gridEphiTmp}, gridInf{gridProperties}, side{sideTmp} {};
 
   /// \param r r coordinate
@@ -151,9 +151,9 @@ struct NumericalFields {
 
 template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
 struct DistCorrInterpolator {
-  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
-  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
-  using TriCubic = TriCubicInterpolator<DataT, Nr, Nz, Nphi>;
+  using RegularGrid = o2::tpc::RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nz, Nr, Nphi>;
+  using TriCubic = o2::tpc::TriCubicInterpolator<DataT, Nz, Nr, Nphi>;
 
   DistCorrInterpolator(const DataContainer& distCorrdR, const DataContainer& distCorrdZ, const DataContainer& distCorrdRPhi, const RegularGrid& gridProperties, const o2::tpc::Side sideTmp) : distCorrdR{distCorrdR}, distCorrdZ{distCorrdZ}, distCorrdRPhi{distCorrdRPhi}, gridInf{gridProperties}, side{sideTmp} {};
 

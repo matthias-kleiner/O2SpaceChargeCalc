@@ -22,6 +22,11 @@
 #include "Rtypes.h" // for ClassDefNV
 #include "DataContainer3D.h"
 
+namespace o2
+{
+namespace tpc
+{
+
 /// \tparam DataT the type of data which is used during the calculations
 /// \tparam Nx number of vertices in x direction
 /// \tparam Ny number of vertices in y direction
@@ -84,6 +89,10 @@ struct RegularGrid3D {
   DataT getInvSpacingX() const { return mInvSpacing[FX]; }
   DataT getInvSpacingY() const { return mInvSpacing[FY]; }
   DataT getInvSpacingZ() const { return mInvSpacing[FZ]; }
+
+  DataT getSpacingX() const { return mSpacing[FX]; }
+  DataT getSpacingY() const { return mSpacing[FY]; }
+  DataT getSpacingZ() const { return mSpacing[FZ]; }
 
   // clamp coordinates to the grid (not circular)
   /// \param pos query position which will be clamped
@@ -269,6 +278,9 @@ std::ostream& operator<<(std::ostream& out, const MClass<DataT, Nx, Ny, Nz>& con
     out << std::endl;
   }
   return out;
+}
+
+}
 }
 
 #endif

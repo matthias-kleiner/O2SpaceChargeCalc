@@ -3,8 +3,10 @@
 
 templateClassImp(O2TPCSpaceCharge3DCalc);
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::performFullRun(const AnalyticalFields<DataT>& formulas, const int mode, const bool electricFieldGlobCorrDist, TFile& file, const o2::tpc::Side side)
+using namespace o2::tpc;
+
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::performFullRun(const AnalyticalFields<DataT>& formulas, const int mode, const bool electricFieldGlobCorrDist, TFile& file, const o2::tpc::Side side)
 {
 
   using timer = std::chrono::high_resolution_clock;
@@ -78,6 +80,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::performFullRun(const Analytica
     time = stop - start;
     std::cout << "electric field calculation: " << time.count() << std::endl;
     dumpElectricFields(file, side);
+    return;
 
     const auto numEFields = getElectricFieldsInterpolator(side);
     start = timer::now();
@@ -117,8 +120,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::performFullRun(const Analytica
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::performGlobalCorrDist(TFile& file, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::performGlobalCorrDist(TFile& file, const o2::tpc::Side side)
 {
 
   using timer = std::chrono::high_resolution_clock;
@@ -148,8 +151,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::performGlobalCorrDist(TFile& f
   std::cout << std::endl;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setFromFile(TFile& file, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setFromFile(TFile& file, const o2::tpc::Side side)
 {
   setDensityFromFile(file, side);
   setPotentialFromFile(file, side);
@@ -160,8 +163,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setFromFile(TFile& file, const
   setGlobalCorrectionsFromFile(file, side);
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct)
 {
   const o2::tpc::Side side = formulaStruct.getSide();
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
@@ -180,15 +183,15 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillBoundaryAndChargeDensities
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
 {
   // TODO MODIFY AliTPCPoissonSolver class to accept grid instead TMATRIXD
   TMatrixD* matricesPotential[Nphi];
   TMatrixD* matricesDensity[Nphi];
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-    matricesPotential[iPhi] = new TMatrixD(Nr, Nz);
-    matricesDensity[iPhi] = new TMatrixD(Nr, Nz);
+    matricesPotential[iPhi] = new TMatrixD(Nz, Nr);
+    matricesDensity[iPhi] = new TMatrixD(Nz, Nr);
     for (size_t iR = 0; iR < Nr; ++iR) {
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
         (*matricesPotential[iPhi])(iR, iZ) = mPotential[side](iZ, iR, iPhi);
@@ -197,16 +200,26 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::poissonSolver(const o2::tpc::S
     }
   }
 
-  ASolv::fgConvergenceError = stoppingConvergence;
-  ASolv poissonSolver;
+  ASolv::sConvergenceError = stoppingConvergence;
+  ASolv poissonSolver(mGrid3D);
+
+  ASolvAli::fgConvergenceError = stoppingConvergence;
+  ASolvAli poissonSolverAli;
   const int symmetry = 0;
-  poissonSolver.PoissonSolver3D(matricesPotential, matricesDensity, Nr, Nz, Nphi, maxIteration, symmetry);
+  std::cout<<"ALI"<<std::endl;
+  // poissonSolverAli.PoissonSolver3D(matricesPotential, matricesDensity, Nz, Nr, Nphi, maxIteration, symmetry);
+  std::cout<<"ALI DONE"<<std::endl;
+
+  std::cout<<"O2"<<std::endl;
+  poissonSolver.poissonSolver3D(mPotential[side], mDensity[side], symmetry);
+  std::cout<<"O2 DONE"<<std::endl;
 
   //convert potential back to regular grid
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
     for (size_t iR = 0; iR < Nr; ++iR) {
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
-        mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
+        // std::cout<<"mPotential: "<< mPotential[side](iZ,iR,iPhi) << std::endl;
+        // mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
       }
     }
   }
@@ -217,8 +230,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::poissonSolver(const o2::tpc::S
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setEField(const AnalyticalFields<DataT>& formulaStruct)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setEField(const AnalyticalFields<DataT>& formulaStruct)
 {
   const o2::tpc::Side side = formulaStruct.getSide();
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
@@ -235,8 +248,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setEField(const AnalyticalFiel
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcEField(const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side side)
 {
   const int symmetry = 0;
 
@@ -318,9 +331,11 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcEField(const o2::tpc::Side
   mIsEfieldSet[side] = true;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi, const DataT approachZ, const DataT approachR, const DataT approachPhi)
+
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi, const DataT approachZ, const DataT approachR, const DataT approachPhi)
 {
+  /*
   // for nearest neighbour search see: https://doc.cgal.org/latest/Spatial_searching/Spatial_searching_2searching_with_point_with_info_8cpp-example.html
   typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
   typedef Kernel::Point_3 Point_3;
@@ -461,62 +476,63 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistWithGlobalCorrIt
       }
     }
   }
+  */
 }
 
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-NumericalFields<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getElectricFieldsInterpolator(const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+NumericalFields<DataT, Nz, Nr, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::getElectricFieldsInterpolator(const o2::tpc::Side side) const
 {
   if (!mIsEfieldSet[side]) {
     std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
   }
-  NumericalFields<DataT, Nr, Nz, Nphi> numFields(mElectricFieldEr[side], mElectricFieldEz[side], mElectricFieldEphi[side], mGrid3D, side);
+  NumericalFields<DataT, Nz, Nr, Nphi> numFields(mElectricFieldEr[side], mElectricFieldEz[side], mElectricFieldEphi[side], mGrid3D, side);
   return numFields;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getLocalDistInterpolator(const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+DistCorrInterpolator<DataT, Nz, Nr, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::getLocalDistInterpolator(const o2::tpc::Side side) const
 {
   if (!mIsLocalDistSet[side]) {
     std::cout << "============== local distortions not set! returning ==============" << std::endl;
   }
 
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mLocalDistdR[side], mLocalDistdZ[side], mLocalDistdRPhi[side], mGrid3D, side);
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> numFields(mLocalDistdR[side], mLocalDistdZ[side], mLocalDistdRPhi[side], mGrid3D, side);
   return numFields;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getLocalCorrInterpolator(const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+DistCorrInterpolator<DataT, Nz, Nr, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::getLocalCorrInterpolator(const o2::tpc::Side side) const
 {
   if (!mIsLocalCorrSet[side]) {
     std::cout << "============== local corrections not set! returning ==============" << std::endl;
   }
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mLocalCorrdR[side], mLocalCorrdZ[side], mLocalCorrdRPhi[side], mGrid3D, side);
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> numFields(mLocalCorrdR[side], mLocalCorrdZ[side], mLocalCorrdRPhi[side], mGrid3D, side);
   return numFields;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getGlobalDistInterpolator(const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+DistCorrInterpolator<DataT, Nz, Nr, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::getGlobalDistInterpolator(const o2::tpc::Side side) const
 {
   if (!mIsGlobalDistSet[side]) {
     std::cout << "============== global distortions not set! returning ==============" << std::endl;
   }
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mGlobalDistdR[side], mGlobalDistdZ[side], mGlobalDistdRPhi[side], mGrid3D, side);
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> numFields(mGlobalDistdR[side], mGlobalDistdZ[side], mGlobalDistdRPhi[side], mGrid3D, side);
   return numFields;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DistCorrInterpolator<DataT, Nr, Nz, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::getGlobalCorrInterpolator(const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+DistCorrInterpolator<DataT, Nz, Nr, Nphi> O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::getGlobalCorrInterpolator(const o2::tpc::Side side) const
 {
   if (!mIsGlobalCorrSet[side]) {
     std::cout << "============== global corrections not set! returning ==============" << std::endl;
   }
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> numFields(mGlobalCorrdR[side], mGlobalCorrdZ[side], mGlobalCorrdRPhi[side], mGrid3D, side);
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> numFields(mGlobalCorrdR[side], mGlobalCorrdZ[side], mGlobalCorrdRPhi[side], mGrid3D, side);
   return numFields;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpElectricFields(TFile& outf, const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::dumpElectricFields(TFile& outf, const o2::tpc::Side side) const
 {
   if (!mIsEfieldSet[side]) {
     std::cout << "============== E-Fields are not set! returning ==============" << std::endl;
@@ -529,8 +545,8 @@ int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpElectricFields(TFile& outf,
   return er + ez + ephi;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setElectricFieldsFromFile(TFile& inpf, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setElectricFieldsFromFile(TFile& inpf, const o2::tpc::Side side)
 {
   const std::string sideName = getSideName(side);
   mElectricFieldEr[side].initFromFile(inpf, Form("fieldEr_side%s", sideName.data()));
@@ -539,8 +555,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setElectricFieldsFromFile(TFil
   mIsEfieldSet[side] = true;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalDistortions(TFile& outf, const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::dumpGlobalDistortions(TFile& outf, const o2::tpc::Side side) const
 {
   if (!mIsGlobalDistSet[side]) {
     std::cout << "============== global distortions are not set! returning ==============" << std::endl;
@@ -553,8 +569,8 @@ int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalDistortions(TFile& ou
   return er + ez + ephi;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalDistortionsFromFile(TFile& inpf, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setGlobalDistortionsFromFile(TFile& inpf, const o2::tpc::Side side)
 {
   mIsGlobalDistSet[side] = true;
   const std::string sideName = getSideName(side);
@@ -563,8 +579,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalDistortionsFromFile(T
   mGlobalDistdRPhi[side].initFromFile(inpf, Form("distRphi_side%s", sideName.data()));
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalCorrections(TFile& outf, const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::dumpGlobalCorrections(TFile& outf, const o2::tpc::Side side) const
 {
   if (!mIsGlobalCorrSet[side]) {
     std::cout << "============== global corrections are not set! returning ==============" << std::endl;
@@ -577,8 +593,8 @@ int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpGlobalCorrections(TFile& ou
   return er + ez + ephi;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalCorrectionsFromFile(TFile& inpf, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setGlobalCorrectionsFromFile(TFile& inpf, const o2::tpc::Side side)
 {
   mIsGlobalCorrSet[side] = true;
   const std::string sideName = getSideName(side);
@@ -587,8 +603,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setGlobalCorrectionsFromFile(T
   mGlobalCorrdRPhi[side].initFromFile(inpf, Form("corrRPhi_side%s", sideName.data()));
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalCorrections(TFile& outf, const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::dumpLocalCorrections(TFile& outf, const o2::tpc::Side side) const
 {
   if (!mIsLocalCorrSet[side]) {
     std::cout << "============== local corrections are not set! returning ==============" << std::endl;
@@ -601,8 +617,8 @@ int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalCorrections(TFile& out
   return lCorrdR + lCorrdZ + lCorrdRPhi;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalCorrectionsFromFile(TFile& inpf, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setLocalCorrectionsFromFile(TFile& inpf, const o2::tpc::Side side)
 {
   const std::string sideName = getSideName(side);
   const bool lCorrdR = mLocalCorrdR[side].initFromFile(inpf, Form("lcorrR_side%s", sideName.data()));
@@ -615,8 +631,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalCorrectionsFromFile(TF
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalDistortions(TFile& outf, const o2::tpc::Side side) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+int O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::dumpLocalDistortions(TFile& outf, const o2::tpc::Side side) const
 {
   if (!mIsLocalDistSet[side]) {
     std::cout << "============== local distortions are not set! returning ==============" << std::endl;
@@ -629,8 +645,8 @@ int O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::dumpLocalDistortions(TFile& out
   return lDistdR + lDistdZ + lDistdRPhi;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalDistortionsFromFile(TFile& inpf, const o2::tpc::Side side)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setLocalDistortionsFromFile(TFile& inpf, const o2::tpc::Side side)
 {
   const std::string sideName = getSideName(side);
   const bool lDistdR = mLocalDistdR[side].initFromFile(inpf, Form("ldistR_side%s", sideName.data()));
@@ -644,8 +660,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::setLocalDistortionsFromFile(TF
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillChargeDensityFromHisto(TFile& fInp, const char* name)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::fillChargeDensityFromHisto(TFile& fInp, const char* name)
 {
   TH3* hisSCDensity3D = (TH3*)fInp.Get(name);
   TH3D hRebin{};
@@ -666,8 +682,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::fillChargeDensityFromHisto(TFi
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::rebinDensityHisto(const TH3& hOrig, TH3& hRebin) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::rebinDensityHisto(const TH3& hOrig, TH3& hRebin) const
 {
 
   const int nBinsPhiNew = Nphi;
@@ -834,11 +850,12 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::rebinDensityHisto(const TH3& h
   // pcstream.Close();
 }
 
-template class O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
-template class O2TPCSpaceCharge3DCalc<float, 65, 65, 180>;
-template class O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
-template class O2TPCSpaceCharge3DCalc<float, 129, 129, 360>;
-template class O2TPCSpaceCharge3DCalc<float, 257, 257, 360>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 65, 65, 90>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 180>;
+// template class O2TPCSpaceCharge3DCalc<float, 129, 129, 360>;
+// template class O2TPCSpaceCharge3DCalc<float, 257, 257, 360>;
 
 // using DataTF = float;
 // using O2TPCSpaceCharge3DCalc17 = O2TPCSpaceCharge3DCalc<DataTF, 17, 17, 90>;

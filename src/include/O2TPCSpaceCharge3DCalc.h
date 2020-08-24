@@ -18,8 +18,11 @@
 
 #include "TriCubic.h"
 #include "AliRoot/AliTPCPoissonSolver.h"
+#include "O2TPCPoissonSolver.h"
+
 #include "SpaceChargeStructs.h"
 #include "O2/Defs.h"
+#include "RegularGrid3D.h"
 
 // Root includes
 #include "TF1.h"   /// for numerical intergration only
@@ -32,22 +35,27 @@
 #endif
 
 // for nearest neighbour search
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/Search_traits_3.h>
-#include <CGAL/Search_traits_adapter.h>
-#include <CGAL/Orthogonal_k_neighbor_search.h>
-#include <CGAL/property_map.h>
-#include <boost/iterator/zip_iterator.hpp>
+// #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+// #include <CGAL/Search_traits_3.h>
+// #include <CGAL/Search_traits_adapter.h>
+// #include <CGAL/Orthogonal_k_neighbor_search.h>
+// #include <CGAL/property_map.h>
+// #include <boost/iterator/zip_iterator.hpp>
+
+namespace o2
+{
+namespace tpc
+{
 
 /// \tparam DataT the type of data which is used during the calculations
 /// \tparam Nr number of vertices in r direction
 /// \tparam Nz number of vertices in z direction
 /// \tparam Nphi number of vertices in phi direction
-template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
+template <typename DataT = float, size_t Nz = 17, size_t Nr = 17, size_t Nphi = 90>
 class O2TPCSpaceCharge3DCalc
 {
-  using RegularGrid = RegularGrid3D<DataT, Nr, Nz, Nphi>;
-  using DataContainer = DataContainer3D<DataT, Nr, Nz, Nphi>;
+  using RegularGrid = RegularGrid3D<DataT, Nz, Nr, Nphi>;
+  using DataContainer = DataContainer3D<DataT, Nz, Nr, Nphi>;
 
  public:
   O2TPCSpaceCharge3DCalc() = default;
@@ -107,7 +115,7 @@ class O2TPCSpaceCharge3DCalc
   /// \param approachZ when the difference between the desired z coordinate and the position of the global correction is deltaZ, approach the desired z coordinate by deltaZ * \p approachZ.
   /// \param approachR when the difference between the desired r coordinate and the position of the global correction is deltaR, approach the desired r coordinate by deltaR * \p approachR.
   /// \param approachPhi when the difference between the desired phi coordinate and the position of the global correction is deltaPhi, approach the desired phi coordinate by deltaPhi * \p approachPhi.
-  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05, const DataT approachZ = 0.1, const DataT approachR = 0.1, const DataT approachPhi = 0.1);
+  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05, const DataT approachZ = 0.1, const DataT approachR = 0.1, const DataT approachPhi = 0.1);
 
   /// Get grid spacing in r direction
   static constexpr DataT getGridSpacingR() { return GRIDSPACINGR; }
@@ -119,7 +127,7 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT getGridSpacingPhi() { return GRIDSPACINGPHI; }
 
   /// Get constant electric field
-  static constexpr DataT getEzField() { return (ASolv::fgkCathodeV - ASolv::fgkGG) / ASolv::fgkTPCZ0; }
+  static constexpr DataT getEzField() { return (TPCParameters<DataT>::CATHODEV - TPCParameters<DataT>::GG) / TPCParameters<DataT>::TPCZ0; }
 
   /// Get inner radius of tpc
   static constexpr DataT getRMin() { return RMIN; }
@@ -146,19 +154,19 @@ class O2TPCSpaceCharge3DCalc
   const RegularGrid& getGrid3D() const { return mGrid3D; }
 
   /// Get struct containing interpolators for electrical fields
-  NumericalFields<DataT, Nr, Nz, Nphi> getElectricFieldsInterpolator(const o2::tpc::Side side) const;
+  NumericalFields<DataT, Nz, Nr, Nphi> getElectricFieldsInterpolator(const o2::tpc::Side side) const;
 
   /// Get struct containing interpolators for local distortions dR, dZ, dPhi
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getLocalDistInterpolator(const o2::tpc::Side side) const;
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> getLocalDistInterpolator(const o2::tpc::Side side) const;
 
   /// Get struct containing interpolators for local corrections dR, dZ, dPhi
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getLocalCorrInterpolator(const o2::tpc::Side side) const;
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> getLocalCorrInterpolator(const o2::tpc::Side side) const;
 
   /// Get struct containing interpolators for global distortions dR, dZ, dPhi
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getGlobalDistInterpolator(const o2::tpc::Side side) const;
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> getGlobalDistInterpolator(const o2::tpc::Side side) const;
 
   /// Get struct containing interpolators for global corrections dR, dZ, dPhi
-  DistCorrInterpolator<DataT, Nr, Nz, Nphi> getGlobalCorrInterpolator(const o2::tpc::Side side) const;
+  DistCorrInterpolator<DataT, Nz, Nr, Nphi> getGlobalCorrInterpolator(const o2::tpc::Side side) const;
 
   /// \param vertex in iz dimension
   /// \param vertex in ir dimension
@@ -318,13 +326,14 @@ class O2TPCSpaceCharge3DCalc
   DataT regulatePhi(const DataT posPhi) const { return mGrid3D.clampToGridCircular(posPhi, 2); }
 
  private:
-  using ASolv = AliTPCPoissonSolver<DataT>;
+  using ASolvAli = AliTPCPoissonSolver<DataT>;
+  using ASolv = o2::tpc::O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>;
 
-  static constexpr DataT RMIN = ASolv::fgkIFCRadius;              ///< min radius
-  static constexpr DataT ZMIN = ASolv::fgkZOffSet;                ///< min z coordinate
+  static constexpr DataT RMIN = TPCParameters<DataT>::IFCRADIUS;  ///< min radius
+  static constexpr DataT ZMIN = 0;                                ///< min z coordinate
   static constexpr DataT PHIMIN = 0;                              ///< min phi coordinate
-  static constexpr DataT RMAX = ASolv::fgkOFCRadius;              ///< max radius
-  static constexpr DataT ZMAX = ASolv::fgkTPCZ0;                  ///< max z coordinate
+  static constexpr DataT RMAX = TPCParameters<DataT>::OFCRADIUS;  ///< max radius
+  static constexpr DataT ZMAX = TPCParameters<DataT>::TPCZ0;      ///< max z coordinate
   static constexpr DataT PHIMAX = 2 * M_PI;                       ///< max phi coordinate // TODO CHANGE TO O2
   static constexpr DataT GRIDSPACINGR = (RMAX - RMIN) / (Nr - 1); ///< grid spacing in r direction
   static constexpr DataT GRIDSPACINGZ = (ZMAX - ZMIN) / (Nz - 1); ///< grid spacing in z direction
@@ -400,12 +409,12 @@ class O2TPCSpaceCharge3DCalc
     calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
   }
 
-  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const NumericalFields<DataT, Nr, Nz, Nphi>& formulaStruct) const
+  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddPhi, DataT& ddZ, const NumericalFields<DataT, Nz, Nr, Nphi>& formulaStruct) const
   {
     calcDistortions(radius, phi, z0Tmp, z1Tmp, ddR, ddPhi, ddZ, formulaStruct);
   }
 
-  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const DistCorrInterpolator<DataT, Nr, Nz, Nphi>& formulaStruct) const
+  void processGlobalDistCorr(const DataT radius, const DataT phi, const DataT z0Tmp, const DataT z1Tmp, DataT& ddR, DataT& ddRPhi, DataT& ddZ, const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& formulaStruct) const
   {
     ddR = formulaStruct.evaldR(z0Tmp, radius, phi);
     ddZ = formulaStruct.evaldZ(z0Tmp, radius, phi);
@@ -415,13 +424,13 @@ class O2TPCSpaceCharge3DCalc
 
 ///
 /// ========================================================================================================
-///       Inline implementations of some methods
+///                                Inline implementations of some methods
 /// ========================================================================================================
 ///
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsRoot(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsRoot(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
 {
   const DataT ezField = getEzField();
   TF1 fErOverEz("fErOverEz", [&](double* x, double* p) { (void)p; return static_cast<double>(formulaStruct.evalEr(p1r, p1phi, static_cast<DataT>(x[0])) / (formulaStruct.evalEz(p1r, p1phi, static_cast<DataT>(x[0])) + ezField)); }, p1z, p2z, 1);
@@ -434,9 +443,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsRoot(const Dat
   localIntDeltaEz = static_cast<DataT>(fEz.Integral(p1z, p2z));
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsTrapezoidal(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsTrapezoidal(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
 {
   //========trapezoidal rule see: https://en.wikipedia.org/wiki/Trapezoidal_rule ==============
   const DataT ezField = getEzField();
@@ -474,9 +483,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsTrapezoidal(co
   localIntDeltaEz = deltaX * (fieldSumEz + static_cast<DataT>(0.5) * (fieldez0 + fieldez1));
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpson(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsSimpson(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
 {
   //==========simpsons rule see: https://en.wikipedia.org/wiki/Simpson%27s_rule =============================
   const DataT ezField = getEzField();
@@ -533,9 +542,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpson(const 
   localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpsonExperimental(const DataT p1r, const DataT p2r, const DataT p1phi, const DataT p2phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsSimpsonExperimental(const DataT p1r, const DataT p2r, const DataT p1phi, const DataT p2phi, const DataT p1z, const DataT p2z, DataT& localIntErOverEz, DataT& localIntEPhiOverEz, DataT& localIntDeltaEz, ElectricFields& formulaStruct) const
 {
   //==========simpsons rule see: https://en.wikipedia.org/wiki/Simpson%27s_rule =============================
   const DataT ezField = getEzField();
@@ -575,9 +584,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::integrateEFieldsSimpsonExperim
   localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrections(const int type, ElectricFields& formulaStruct)
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcLocalDistortionsCorrections(const int type, ElectricFields& formulaStruct)
 {
   const o2::tpc::Side side = formulaStruct.getSide();
 #pragma omp parallel for
@@ -639,9 +648,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcLocalDistortionsCorrection
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename ElectricFields>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcDistortions(const DataT p1r, const DataT p1phi, const DataT p1z, const DataT p2z, DataT& ddR, DataT& ddRPhi, DataT& ddZ, ElectricFields& formulaStruct) const
 {
   DataT localIntErOverEz = 0;
   DataT localIntEPhiOverEz = 0;
@@ -668,13 +677,13 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcDistortions(const DataT p1
     }
     ddR = fC0 * localIntErOverEz + fC1 * localIntEPhiOverEz;
     ddRPhi = (fC0 * localIntEPhiOverEz - fC1 * localIntErOverEz) / p1r;
-    ddZ = -1 * localIntDeltaEz * ASolv::fgkdvdE;
+    ddZ = -1 * localIntDeltaEz * TPCParameters<DataT>::DVDE;
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename Formulas>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const Formulas& formulaStruct)
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistortions(const Formulas& formulaStruct)
 {
   const o2::tpc::Side side = formulaStruct.getSide();
   // loop over tpc volume and let the electron drift from each vertex to the readout of the tpc
@@ -725,9 +734,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalDistortions(const Fo
   mIsGlobalDistSet[side] = true;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 template <typename Formulas>
-void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const Formulas& formulaStruct)
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalCorrections(const Formulas& formulaStruct)
 {
   const o2::tpc::Side side = formulaStruct.getSide();
 #pragma omp parallel for
@@ -768,5 +777,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nr, Nz, Nphi>::calcGlobalCorrections(const Fo
   }
   mIsGlobalCorrSet[side] = true;
 }
+
+} // namespace tpc
+} // namespace o2
 
 #endif

@@ -1,6 +1,11 @@
 #include <iostream>
 #include <iomanip>
 
+namespace o2
+{
+namespace tpc
+{
+
 /// \tparam DataT the type of storage which is used during the calculations
 template <typename DataT = float>
 struct Matrix3D {
@@ -29,6 +34,14 @@ struct Matrix3D {
     nY = nYTmp;
     nZ = nZTmp;
     storage.resize(nXTmp * nYTmp * nZTmp);
+  }
+
+  const DataT* data() const {
+    return storage.data();
+  }
+
+  DataT* data(){
+    return storage.data();
   }
 
   void print(const int nZStart = 0, int nZMax = -1)
@@ -94,13 +107,28 @@ enum RelaxType {
 
 ///< Parameters choice for MultiGrid    algorithm
 struct MGParameters {
-  bool isFull3D = false;             ///<  TRUE: full coarsening, FALSE: semi coarsening
-  CycleType cycleType = FCycle;      ///< cycleType follow  CycleType
-  GridTransferType gtType = Full;    ///< gtType grid transfer type follow GridTransferType
-  RelaxType relaxType = GaussSeidel; ///< relaxType follow RelaxType
-  // int gamma;                          ///< number of iteration at coarsest level
-  int nPre = 2;       ///< number of iteration for pre smoothing
-  int nPost = 2;      ///< number of iteration for post smoothing
-  int nMGCycle = 200; ///< number of multi grid cycle (V type)
-  int maxLoop = 6;    ///< the number of tree-deep of multi grid
+  inline static bool isFull3D = false;             ///<  TRUE: full coarsening, FALSE: semi coarsening
+  inline static CycleType cycleType = FCycle;      ///< cycleType follow  CycleType
+  inline static GridTransferType gtType = Full;    ///< gtType grid transfer type follow GridTransferType
+  inline static RelaxType relaxType = GaussSeidel; ///< relaxType follow RelaxType
+  inline static int nPre = 2;                      ///< number of iteration for pre smoothing
+  inline static int nPost = 2;                     ///< number of iteration for post smoothing
+  inline static int nMGCycle = 200;                ///< number of multi grid cycle (V type)
+  inline static int maxLoop = 6;                   ///< the number of tree-deep of multi grid
 };
+
+template <typename DataT = float>
+struct TPCParameters {
+  static constexpr DataT TPCZ0{249.7};                          ///< nominal gating grid position
+  static constexpr DataT IFCRADIUS{83.5};                       ///< Mean Radius of the Inner Field Cage ( 82.43 min,  83.70 max) (cm)
+  static constexpr DataT OFCRADIUS{254.5};                      ///< Mean Radius of the Outer Field Cage (252.55 min, 256.45 max) (cm)
+  static constexpr DataT ZOFFSET{0.2};                          ///< Offset from CE: calculate all distortions closer to CE as if at this point
+  static constexpr DataT CATHODEV{-100000.0};                   ///< Cathode Voltage (volts)
+  static constexpr DataT GG{-70.0};                             ///< Gating Grid voltage (volts)
+  static constexpr DataT DVDE{0.0024};                          ///< [cm/V] drift velocity dependency on the E field (from Magboltz for NeCO2N2 at standard environment)
+  static constexpr DataT EM{-1.602176487e-19 / 9.10938215e-31}; ///< charge/mass in [C/kg]
+  static constexpr DataT E0{8.854187817e-12};                   ///< vacuum permittivity [A·s/(V·m)]
+};
+
+} // namespace tpc
+} // namespace o2

@@ -23,16 +23,18 @@
 #include <iostream>
 #include <numeric>
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
+using namespace o2::tpc;
+
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
   poissonMultiGrid3D2D(matricesV, matricesCharge, symmetry);
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
-  Info("PoissonMultiGrid3D2D", "%s", Form("in Poisson Solver 3D multiGrid semi coarsening Nr=%lu, cols=%lu, Nphi=%lu \n", Nr, Nz, Nphi));
+  Info("PoissonMultiGrid3D2D", "%s", Form("in Poisson Solver 3D multiGrid semi coarsening Nr=%lu, cols=%lu, Nphi=%lu \n", Nz, Nr, Nphi));
 
   // Check that the number of Nr and Nz is suitable for a binary expansion
   if (!isPowerOfTwo((Nr - 1))) {
@@ -52,8 +54,11 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
     return;
   }
 
-  const DataT ratioPhi = GRIDSPACINGR * GRIDSPACINGR / (GRIDSPACINGPHI * GRIDSPACINGPHI); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-  const DataT ratioZ = GRIDSPACINGR * GRIDSPACINGR / (GRIDSPACINGZ * GRIDSPACINGZ);       // ratio_{Z} = gridSize_{r} / gridSize_{z}
+  const DataT gridSpacingR = getSpacingR();
+  const DataT gridSpacingZ = getSpacingZ();
+  const DataT gridSpacingPhi = getSpacingPhi();
+  const DataT ratioPhi = gridSpacingR * gridSpacingR / (gridSpacingPhi * gridSpacingPhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
+  const DataT ratioZ = gridSpacingR * gridSpacingR / (gridSpacingZ * gridSpacingZ);       // ratio_{Z} = gridSize_{r} / gridSize_{z}
 
   // Solve Poisson's equation in cylindrical coordinates by multiGrid technique
   // Allow for different size grid spacing in R and Z directions
@@ -69,8 +74,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
     nGridCol++;
   }
 
-  size_t nLoop = std::max(nGridRow, nGridCol); // Calculate the number of nLoop for the binary expansion
-  nLoop = (nLoop > mMgParameters.maxLoop) ? mMgParameters.maxLoop : nLoop;
+  const int maxVal = std::max(nGridRow, nGridCol); // Calculate the number of nLoop for the binary expansion
+  const size_t nLoop = (maxVal > o2::tpc::MGParameters::maxLoop) ? o2::tpc::MGParameters::maxLoop : maxVal;
   unsigned int iOne = 1; // index i in gridSize r (original)
   unsigned int jOne = 1; // index j in gridSize z (original)
 
@@ -92,8 +97,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
     tvCharge[count - 1].resize(tnRRow, tnZColumn, Nphi);
 
     if (count == 1) {
-      std::move(matricesCharge.begin(), matricesCharge.end(), tvChargeFMG[count - 1].storage.data());
-      std::move(matricesV.begin(), matricesV.end(), tvArrayV[count - 1].storage.data());
+      std::move(matricesCharge.begin(), matricesCharge.end(), tvChargeFMG[count - 1].data());
+      std::move(matricesV.begin(), matricesV.end(), tvArrayV[count - 1].data());
     } else {
       restrict3D(tvChargeFMG[count - 1], tvChargeFMG[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
       restrictBoundary3D(tvArrayV[count - 1], tvArrayV[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
@@ -109,35 +114,29 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
   std::array<DataT, Nr> inverseCoefficient4{}; // inverse of coefficient4(Nr)
 
   // Case full multi grid (FMG)
-  if (mMgParameters.cycleType == FCycle) {
+  if (o2::tpc::MGParameters::cycleType == FCycle) {
     // 1) Relax on the coarsest grid
     iOne = iOne / 2;
     jOne = jOne / 2;
     int tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
     int tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
-    const DataT h = GRIDSPACINGR * iOne;
+    const DataT h = getSpacingR() * iOne;
     const DataT h2 = h * h;
     const DataT iOne2 = iOne * iOne;
     const DataT tempRatioPhi = ratioPhi * iOne2; // Used tobe divided by ( m_one * m_one ) when m_one was != 1
     const DataT tempRatioZ = ratioZ * iOne2 / (jOne * jOne);
 
-    for (unsigned int i = 1; i < tnRRow - 1; i++) {
-      const DataT radius = IFCRadius + i * h;
-      const DataT radiusInv = 0.5 / radius;
-      coefficient1[i] = 1.0 + h * radiusInv;
-      coefficient2[i] = 1.0 - h * radiusInv;
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-    }
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
+
     // relax on the coarsest level
     relax3D(tvArrayV[nLoop - 1], tvChargeFMG[nLoop - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
 
     // 2) Do multiGrid v-cycle from coarsest to finest
     for (int count = nLoop - 2; count >= 0; count--) {
       // move to finer grid
-      iOne = iOne / 2;
-      jOne = jOne / 2;
+      iOne = iOne * 0.5;
+      jOne = jOne * 0.5;
       tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
       tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
@@ -147,23 +146,18 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
       // 2) c) Copy the restricted charge to charge for calculation
       tvCharge[count] = tvChargeFMG[count]; //copy
 
-      // 2) c) Do V cycle mMgParameters.nMGCycle times at most
-      for (int mgCycle = 0; mgCycle < mMgParameters.nMGCycle; mgCycle++) {
+      // 2) c) Do V cycle o2::tpc::MGParameters::nMGCycle times at most
+      for (int mgCycle = 0; mgCycle < o2::tpc::MGParameters::nMGCycle; mgCycle++) {
         // Copy the potential to temp array for convergence calculation
         tvPrevArrayV[count] = tvArrayV[count];
 
         // 2) c) i) Call V cycle from grid count+1 (current fine level) to nLoop (coarsest)
-        vCycle3D2D(symmetry, count + 1, nLoop, mMgParameters.nPre, mMgParameters.nPost, ratioZ, ratioPhi, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
+        vCycle3D2D(symmetry, count + 1, nLoop, o2::tpc::MGParameters::nPre, o2::tpc::MGParameters::nPost, ratioZ, ratioPhi, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
 
         const DataT convergenceError = getConvergenceError(tvArrayV[count], tvPrevArrayV[count]);
 
-        if (count == 0) {
-          mErrorConvergenceNormInf[mgCycle] = convergenceError;
-        }
-
         /// if already converge just break move to finer grid
         if (convergenceError <= sConvergenceError) {
-          mIterations = mgCycle + 1;
           break;
         }
       }
@@ -173,8 +167,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::poissonMultiGrid3D2D(DataContainer
   std::move(tvArrayV[0].storage.begin(), tvArrayV[0].storage.end(), matricesV.data());
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi,
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::vCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi,
                                                          std::vector<Matrix3D>& tvArrayV, std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1,
                                                          std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3, std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const
 {
@@ -184,20 +178,15 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, con
   int tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
   for (int count = gridFrom; count <= gridTo - 1; ++count) {
-    const DataT h = GRIDSPACINGR * iOne;
+    const DataT h = getSpacingR() * iOne;
     const DataT h2 = h * h;
     const DataT ih2 = 1.0 / h2;
     const int iOne2 = iOne * iOne;
     const DataT tempRatioPhi = ratioPhi * iOne2; // Used tobe divided by ( m_one * m_one ) when m_one was != 1
     const DataT tempRatioZ = ratioZ * iOne2 / (jOne * jOne);
 
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
     for (unsigned int i = 1; i < tnRRow - 1; ++i) {
-      const DataT radius = IFCRadius + i * h;
-      const DataT radiusInv = 0.5 / radius;
-      coefficient1[i] = 1.0 + h * radiusInv;
-      coefficient2[i] = 1.0 - h * radiusInv;
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
       inverseCoefficient4[i] = 1.0 / coefficient4[i];
     }
 
@@ -223,21 +212,14 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, con
   }
 
   // coarsest grid
-  const DataT h = GRIDSPACINGR * iOne;
+  const DataT h = getSpacingR() * iOne;
   const DataT h2 = h * h;
 
   const int iOne2 = iOne * iOne;
   const DataT tempRatioPhi = ratioPhi * iOne2;
   const DataT tempRatioZ = ratioZ * iOne2 / (jOne * jOne);
 
-  for (int i = 1; i < tnRRow - 1; ++i) {
-    const DataT radius = IFCRadius + i * h;
-    const DataT radiusInv = 0.5 / radius;
-    coefficient1[i] = 1.0 + h * radiusInv;
-    coefficient2[i] = 1.0 - h * radiusInv;
-    coefficient3[i] = tempRatioPhi / (radius * radius);
-    coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-  }
+  calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
 
   // 3) Relax on the coarsest grid
   relax3D(tvArrayV[gridTo - 1], tvCharge[gridTo - 1], tnRRow, tnZColumn, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
@@ -250,7 +232,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, con
     tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
     tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
 
-    const DataT h = GRIDSPACINGR * iOne;
+    const DataT h = getSpacingR() * iOne;
     const DataT h2 = h * h;
     const int iOne2 = iOne * iOne;
     const DataT tempRatioPhi = ratioPhi * iOne2; // Used tobe divided by ( m_one * m_one ) when m_one was != 1
@@ -259,14 +241,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, con
     // 4) Interpolation/Prolongation
     addInterp3D(tvArrayV[count - 1], tvArrayV[count], tnRRow, tnZColumn, Nphi, Nphi);
 
-    for (int i = 1; i < tnRRow - 1; ++i) {
-      const DataT radius = IFCRadius + i * h;
-      const DataT radiusInv = 0.5 / radius;
-      coefficient1[i] = 1.0 + h * radiusInv;
-      coefficient2[i] = 1.0 - h * radiusInv;
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-    }
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
 
     // 5) Post-Smoothing: Gauss-Seidel Relaxation
     for (int jPost = 1; jPost <= nPost; ++jPost) {
@@ -275,11 +250,11 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::vCycle3D2D(const int symmetry, con
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry,
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry,
                                                         const DataT ih2, const DataT tempRatioZ, const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& inverseCoefficient4) const
 {
-#pragma omp parallel for // parallising this loop is possible - but makes it a little slower (why? overhead?)-
+#pragma omp parallel for // parallising this loop is possible - but using more than 2 cores makes it slower -
   for (int m = 0; m < Nphi; ++m) {
     int mp1 = m + 1;
     int signPlus = 1;
@@ -324,72 +299,77 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::residue3D(Matrix3D& residue, const
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::interp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::interp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // Do restrict 2 D for each slice
   if (newPhiSlice == 2 * oldPhiSlice) {
     for (int m = 0; m < newPhiSlice; m += 2) {
       // assuming no symmetry
-      int mm = m / 2;
+      int mm = m * 0.5;
       int mmPlus = mm + 1;
       int mp1 = m + 1;
 
       // round
-      if (mmPlus > (oldPhiSlice)-1) {
-        mmPlus = mm + 1 - (oldPhiSlice);
+      if (mmPlus > oldPhiSlice - 1) {
+        mmPlus = mm + 1 - oldPhiSlice;
       }
-      if (mp1 > (newPhiSlice)-1) {
-        mp1 = m + 1 - (newPhiSlice);
+      if (mp1 > newPhiSlice - 1) {
+        mp1 = m + 1 - newPhiSlice;
       }
 
       for (int j = 2; j < tnZColumn - 1; j += 2) {
         for (int i = 2; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) = matricesCurrentVC(i / 2, j / 2, mm);
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) = matricesCurrentVC(iHalf, jHalf, mm);
           // point on corner lines at phi direction
-          matricesCurrentV(i, j, mp1) = 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus));
+          matricesCurrentV(i, j, mp1) = 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus));
         }
       }
 
       for (int j = 1; j < tnZColumn - 1; j += 2) {
         for (int i = 2; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) = 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) = 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm));
           // point on corner lines at phi direction
-          matricesCurrentV(i, j, mp1) = 0.25 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus) + matricesCurrentVC(i / 2, j / 2 + 1, mmPlus));
+          matricesCurrentV(i, j, mp1) = 0.25 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus) + matricesCurrentVC(iHalf, jHalf + 1, mmPlus));
         }
       }
 
       for (int j = 2; j < tnZColumn - 1; j += 2) {
         for (int i = 1; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) = 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2, mm));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) = 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf, mm));
           // point on line at phi direction
-          matricesCurrentV(i, j, mp1) = 0.25 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus)) + (matricesCurrentVC(i / 2 + 1, j / 2, mmPlus) + matricesCurrentVC(i / 2 + 1, j / 2, mm)));
+          matricesCurrentV(i, j, mp1) = 0.25 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus)) + (matricesCurrentVC(iHalf + 1, jHalf, mmPlus) + matricesCurrentVC(iHalf + 1, jHalf, mm)));
         }
       }
 
       for (int j = 1; j < tnZColumn - 1; j += 2) {
         for (int i = 1; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) = 0.25 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm)) +
-                                              (matricesCurrentVC(i / 2 + 1, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mm)));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) = 0.25 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm)) + (matricesCurrentVC(iHalf + 1, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf + 1, mm)));
           // point at the center at phi direction
-          matricesCurrentV(i, j, mp1) = 0.125 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus) +
-                                                  matricesCurrentVC(i / 2, j / 2 + 1, mmPlus)) +
-                                                 (matricesCurrentVC(i / 2 + 1, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mm) +
-                                                  matricesCurrentVC(i / 2 + 1, j / 2, mmPlus) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mmPlus)));
+          matricesCurrentV(i, j, mp1) = 0.125 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus) + matricesCurrentVC(iHalf, jHalf + 1, mmPlus)) +
+                                                 (matricesCurrentVC(iHalf + 1, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf + 1, mm) + matricesCurrentVC(iHalf + 1, jHalf, mmPlus) + matricesCurrentVC(iHalf + 1, jHalf + 1, mmPlus)));
         }
       }
     }
 
   } else {
-#pragma omp parallel for
+    #pragma omp parallel for // no change
     for (int m = 0; m < newPhiSlice; m++) {
       interp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::interp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::interp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int j = 2; j < tnZColumn - 1; j += 2) {
     for (int i = 2; i < tnRRow - 1; i += 2) {
@@ -399,34 +379,40 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::interp2D(Matrix3D& matricesCurrent
 
   for (int j = 1; j < tnZColumn - 1; j += 2) {
     for (int i = 2; i < tnRRow - 1; i += 2) {
-      matricesCurrentV(i, j, iphi) = 0.5 * (matricesCurrentVC(i / 2, j / 2, iphi) + matricesCurrentVC(i / 2, j / 2 + 1, iphi));
+      const int iHalf = i * 0.5;
+      const int jHalf = j * 0.5;
+      matricesCurrentV(i, j, iphi) = 0.5 * (matricesCurrentVC(iHalf, jHalf, iphi) + matricesCurrentVC(iHalf, jHalf + 1, iphi));
     }
   }
 
   for (int j = 2; j < tnZColumn - 1; j += 2) {
     for (int i = 1; i < tnRRow - 1; i += 2) {
-      matricesCurrentV(i, j, iphi) = 0.5 * (matricesCurrentVC(i / 2, j / 2, iphi) + matricesCurrentVC(i / 2 + 1, j / 2, iphi));
+      const int iHalf = i * 0.5;
+      const int jHalf = j * 0.5;
+      matricesCurrentV(i, j, iphi) = 0.5 * (matricesCurrentVC(iHalf, jHalf, iphi) + matricesCurrentVC(iHalf + 1, jHalf, iphi));
     }
   }
 
   // only if full
-  if (mMgParameters.gtType == Full) {
+  if (o2::tpc::MGParameters::gtType == Full) {
     for (int j = 1; j < tnZColumn - 1; j += 2) {
       for (int i = 1; i < tnRRow - 1; i += 2) {
-        matricesCurrentV(i, j, iphi) = 0.25 * (matricesCurrentVC(i / 2, j / 2, iphi) + matricesCurrentVC(i / 2, j / 2 + 1, iphi) + matricesCurrentVC(i / 2 + 1, j / 2, iphi) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, iphi));
+        const int iHalf = i * 0.5;
+        const int jHalf = j * 0.5;
+        matricesCurrentV(i, j, iphi) = 0.25 * (matricesCurrentVC(iHalf, jHalf, iphi) + matricesCurrentVC(iHalf, jHalf + 1, iphi) + matricesCurrentVC(iHalf + 1, jHalf, iphi) + matricesCurrentVC(iHalf + 1, jHalf + 1, iphi));
       }
     }
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::addInterp3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // Do restrict 2 D for each slice
   if (newPhiSlice == 2 * oldPhiSlice) {
     for (int m = 0; m < newPhiSlice; m += 2) {
       // assuming no symmetry
-      int mm = m / 2;
+      int mm = m * 0.5;
       int mmPlus = mm + 1;
       int mp1 = m + 1;
 
@@ -440,50 +426,56 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp3D(Matrix3D& matricesCurr
 
       for (int j = 2; j < tnZColumn - 1; j += 2) {
         for (int i = 2; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) += matricesCurrentVC(i / 2, j / 2, mm);
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) += matricesCurrentVC(iHalf, jHalf, mm);
           // point on corner lines at phi direction
-          matricesCurrentV(i, j, mp1) += 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus));
+          matricesCurrentV(i, j, mp1) += 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus));
         }
       }
 
       for (int j = 1; j < tnZColumn - 1; j += 2) {
         for (int i = 2; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) += 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) += 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm));
           // point on corner lines at phi direction
-          matricesCurrentV(i, j, mp1) += 0.25 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus) + matricesCurrentVC(i / 2, j / 2 + 1, mmPlus));
+          matricesCurrentV(i, j, mp1) += 0.25 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus) + matricesCurrentVC(iHalf, jHalf + 1, mmPlus));
         }
       }
 
       for (int j = 2; j < tnZColumn - 1; j += 2) {
         for (int i = 1; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) += 0.5 * (matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2, mm));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) += 0.5 * (matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf, mm));
           // point on line at phi direction
-          matricesCurrentV(i, j, mp1) += 0.25 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus)) + (matricesCurrentVC(i / 2 + 1, j / 2, mmPlus) + matricesCurrentVC(i / 2 + 1, j / 2, mm)));
+          matricesCurrentV(i, j, mp1) += 0.25 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus)) + (matricesCurrentVC(iHalf + 1, jHalf, mmPlus) + matricesCurrentVC(iHalf + 1, jHalf, mm)));
         }
       }
 
       for (int j = 1; j < tnZColumn - 1; j += 2) {
         for (int i = 1; i < tnRRow - 1; i += 2) {
-          matricesCurrentV(i, j, m) += 0.25 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm)) + (matricesCurrentVC(i / 2 + 1, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mm)));
+          const int iHalf = i * 0.5;
+          const int jHalf = j * 0.5;
+          matricesCurrentV(i, j, m) += 0.25 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm)) + (matricesCurrentVC(iHalf + 1, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf + 1, mm)));
           // point at the center at phi direction
-          matricesCurrentV(i, j, mp1) += 0.125 * ((matricesCurrentVC(i / 2, j / 2, mm) + matricesCurrentVC(i / 2, j / 2 + 1, mm) + matricesCurrentVC(i / 2, j / 2, mmPlus) +
-                                                   matricesCurrentVC(i / 2, j / 2 + 1, mmPlus)) +
-                                                  (matricesCurrentVC(i / 2 + 1, j / 2, mm) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mm) +
-                                                   matricesCurrentVC(i / 2 + 1, j / 2, mmPlus) + matricesCurrentVC(i / 2 + 1, j / 2 + 1, mmPlus)));
+          matricesCurrentV(i, j, mp1) += 0.125 * ((matricesCurrentVC(iHalf, jHalf, mm) + matricesCurrentVC(iHalf, jHalf + 1, mm) + matricesCurrentVC(iHalf, jHalf, mmPlus) + matricesCurrentVC(iHalf, jHalf + 1, mmPlus)) +
+                                                  (matricesCurrentVC(iHalf + 1, jHalf, mm) + matricesCurrentVC(iHalf + 1, jHalf + 1, mm) + matricesCurrentVC(iHalf + 1, jHalf, mmPlus) + matricesCurrentVC(iHalf + 1, jHalf + 1, mmPlus)));
         }
       }
     }
 
   } else {
-#pragma omp parallel for
+    #pragma omp parallel for // no change
     for (int m = 0; m < newPhiSlice; m++) {
       addInterp2D(matricesCurrentV, matricesCurrentVC, tnRRow, tnZColumn, m);
     }
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::addInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int j = 2; j < tnZColumn - 1; j += 2) {
     for (int i = 2; i < tnRRow - 1; i += 2) {
@@ -508,7 +500,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp2D(Matrix3D& matricesCurr
   }
 
   // only if full
-  if (mMgParameters.gtType == Full) {
+  if (o2::tpc::MGParameters::gtType == Full) {
     for (int j = 1; j < tnZColumn - 1; j += 2) {
       for (int i = 1; i < tnRRow - 1; i += 2) {
         const int iHalf = 0.5 * i;
@@ -519,12 +511,12 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::addInterp2D(Matrix3D& matricesCurr
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2,
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2,
                                                       const DataT tempRatioZ, const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& coefficient4) const
 {
   // Gauss-Seidel (Read Black}
-  if (mMgParameters.relaxType == GaussSeidel) {
+  if (o2::tpc::MGParameters::relaxType == GaussSeidel) {
     // for each slice
     for (int iPass = 1; iPass <= 2; ++iPass) {
       const int msw = (iPass % 2) ? 1 : 2;
@@ -571,7 +563,7 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::relax3D(Matrix3D& matricesCurrentV
         }   // end Nr
       }     // end phi
     }       // end sweep
-  } else if (mMgParameters.relaxType == Jacobi) {
+  } else if (o2::tpc::MGParameters::relaxType == Jacobi) {
     // for each slice
     for (int m = 0; m < Nphi; m++) {
       int mp1 = m + 1;
@@ -619,8 +611,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::relax3D(Matrix3D& matricesCurrentV
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrictBoundary3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   // in case of full 3d and the Nphi is also coarsening
   if (2 * newPhiSlice == oldPhiSlice) {
@@ -644,8 +636,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary3D(Matrix3D& matri
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   // for boundary
   for (int j = 0, jj = 0; j < tnZColumn; ++j, jj += 2) {
@@ -660,8 +652,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrictBoundary2D(Matrix3D& matri
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict3D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int newPhiSlice, const int oldPhiSlice) const
 {
   if (2 * newPhiSlice == oldPhiSlice) {
     int mm = 0;
@@ -719,8 +711,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict3D(Matrix3D& matricesCurre
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
 {
   for (int i = 1, ii = 2; i < tnRRow - 1; i++, ii += 2) {
     for (int j = 1, jj = 2; j < tnZColumn - 1; j++, jj += 2) {
@@ -728,10 +720,10 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict2D(Matrix3D& matricesCurre
       const int iim1 = ii - 1;
       const int jjp1 = jj + 1;
       const int jjm1 = jj - 1;
-      if (mMgParameters.gtType == Half) {
+      if (o2::tpc::MGParameters::gtType == Half) {
         // half
         matricesCurrentCharge(i, j, iphi) = 0.5 * residue(ii, jj, iphi) + 0.125 * (residue(iip1, jj, iphi) + residue(iim1, jj, iphi) + residue(ii, jjp1, iphi) + residue(ii, jjm1, iphi));
-      } else if (mMgParameters.gtType == Full) {
+      } else if (o2::tpc::MGParameters::gtType == Full) {
         matricesCurrentCharge(i, j, iphi) = 0.25 * residue(ii, jj, iphi) + 0.125 * (residue(iip1, jj, iphi) + residue(iim1, jj, iphi) + residue(ii, jjp1, iphi) + residue(ii, jjm1, iphi)) +
                                             0.0625 * (residue(iip1, jjp1, iphi) + residue(iim1, jjp1, iphi) + residue(iip1, jjm1, iphi) + residue(iim1, jjm1, iphi));
       }
@@ -752,8 +744,8 @@ void O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::restrict2D(Matrix3D& matricesCurre
   }
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-bool O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::isPowerOfTwo(int i) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+bool O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::isPowerOfTwo(int i) const
 {
   int j = 0;
   while (i > 0) {
@@ -766,15 +758,15 @@ bool O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::isPowerOfTwo(int i) const
   return false;
 }
 
-template <typename DataT, size_t Nr, size_t Nz, size_t Nphi>
-DataT O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::getConvergenceError(const Matrix3D& matricesCurrentV, Matrix3D& prevArrayV) const
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+DataT O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::getConvergenceError(const Matrix3D& matricesCurrentV, Matrix3D& prevArrayV) const
 {
   DataT errorArr[Nphi]{};
 
   // subtract the two matrices
   std::transform(prevArrayV.storage.begin(), prevArrayV.storage.end(), matricesCurrentV.storage.begin(), prevArrayV.storage.begin(), std::minus<DataT>());
 
-#pragma omp parallel for
+  #pragma omp parallel for // parallising this loop is possible - but using more than 2 cores makes it slower -
   for (unsigned int m = 0; m < Nphi; m++) {
     // square each entry in the vector and sum them up
     const auto phiStep = prevArrayV.nX * prevArrayV.nY; // number of points in one phi slice
@@ -786,7 +778,7 @@ DataT O2TPCPoissonSolver<DataT, Nr, Nz, Nphi>::getConvergenceError(const Matrix3
   return *std::max_element(errorArr, errorArr + Nphi);
 }
 
-template class O2TPCPoissonSolver<float, 17, 17, 90>;
-template class O2TPCPoissonSolver<float, 65, 65, 90>;
-template class O2TPCPoissonSolver<float, 129, 129, 180>;
-template class O2TPCPoissonSolver<double, 129, 129, 180>;
+template class o2::tpc::O2TPCPoissonSolver<float, 17, 17, 90>;
+template class o2::tpc::O2TPCPoissonSolver<float, 65, 65, 90>;
+template class o2::tpc::O2TPCPoissonSolver<float, 129, 129, 180>;
+template class o2::tpc::O2TPCPoissonSolver<double, 129, 129, 180>;

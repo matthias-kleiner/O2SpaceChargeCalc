@@ -66,19 +66,19 @@ class O2TPCSpaceCharge3DCalc
   // set the charge density from TH3 histogram containing the space charge density
   void fillChargeDensityFromHisto(TFile& fInp, const char* name);
 
-  // fill boundary and ChargeDensities
-  // posson solver
-  // local distortions and corrections
-  // global distortions and correction
-  // \param mode mode=0: full analytical, mode=1 full numerical
-  void performFullRun(const AnalyticalFields<DataT>& formulaStruct, const int mode, const bool electricFieldGlobCorrDist, TFile& file, const o2::tpc::Side side);
-  void performGlobalCorrDist(TFile& file, const o2::tpc::Side side);
-
   void setFromFile(TFile& file, const o2::tpc::Side side);
 
-  // stepp 0: this function fills the internal storage for density and boundary conditions for potential
-  /// \param formulaStruct struct containing a method to evaluate the density and potential
-  void fillBoundaryAndChargeDensities(const AnalyticalFields<DataT>& formulaStruct);
+  // stepp 0: this function fills the internal storage for density
+  /// \param formulaStruct struct containing a method to evaluate the density
+  void setChargeDensity(const AnalyticalFields<DataT>& formulaStruct);
+
+  // stepp 0: this function fills the boundary of the potential using an analtical formula
+  /// \param formulaStruct struct containing a method to evaluate the potential
+  void setPotentialBoundary(const AnalyticalFields<DataT>& formulaStruct);
+
+  // stepp 0: this function fills the potential using an analtical formula
+  /// \param formulaStruct struct containing a method to evaluate the potential
+  void setPotential(const AnalyticalFields<DataT>& formulaStruct);
 
   // stepp 1: use the AliTPCPoissonSolver class to numerically calculate the potential with space charge density and boundary conditions from potential
   void poissonSolver(const o2::tpc::Side side, const int maxIteration = 300, const DataT stoppingConvergence = 1e-8);
@@ -234,6 +234,9 @@ class O2TPCSpaceCharge3DCalc
   /// Get density for vertex
   DataT getDensity(const size_t iz, const size_t ir, const size_t iphi, const o2::tpc::Side side) const { return mDensity[side](iz, ir, iphi); }
 
+  /// Get potential for vertex
+  DataT getPotential(const size_t iz, const size_t ir, const size_t iphi, const o2::tpc::Side side) const { return mPotential[side](iz, ir, iphi); }
+
   /// Get the step width which is used for the calculation of the correction/distortions in units of the z-bin
   int getStepWidth() const { return 1 / mStepWidth; }
 
@@ -272,6 +275,11 @@ class O2TPCSpaceCharge3DCalc
                              Simpson = 1,            ///< simpon integration. see: https://en.wikipedia.org/wiki/Simpson%27s_rule. straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
                              Root = 2,               ///< Root integration. straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
                              SimpsonExperimental = 3 ///< simpon integration, but using an iterative method to approximate the drift path. No straight electron drift line assumed: z0->z1, r0->r1, phi0->phi1
+  };
+
+  enum Type {
+    Distortions = 0, ///< distortions
+    Corrections = 1  ///< corrections
   };
 
   /// write electric field to root file
@@ -558,8 +566,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsSimpsonExperim
   const DataT fieldez1 = formulaStruct.evalEz(p2z, p2r, p2phiSave);
   const DataT fieldephi1 = formulaStruct.evalEphi(p2z, p2r, p2phiSave);
 
-  const DataT eZ0 = ezField + fieldez0;
-  const DataT eZ1 = ezField + fieldez1;
+  const DataT eZ0Inv = 1. / (ezField + fieldez0);
+  const DataT eZ1Inv = 1. / (ezField + fieldez1);
 
   DataT fieldSum1ErOverEz = 0;
   DataT fieldSum2ErOverEz = 0;
@@ -579,8 +587,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::integrateEFieldsSimpsonExperim
   fieldSum2Ez += ezField2;
 
   const DataT deltaXSimpsonSixth = (p2z - p1z) / 6;
-  localIntErOverEz = deltaXSimpsonSixth * (2 * fieldSum1ErOverEz + 4 * fieldSum2ErOverEz + fielder0 / eZ0 + fielder1 / eZ1);
-  localIntEPhiOverEz = deltaXSimpsonSixth * (2 * fieldSum1EphiOverEz + 4 * fieldSum2EphiOverEz + fieldephi0 / eZ0 + fieldephi1 / eZ1);
+  localIntErOverEz = deltaXSimpsonSixth * (2 * fieldSum1ErOverEz + 4 * fieldSum2ErOverEz + fielder0 * eZ0Inv + fielder1 * eZ1Inv);
+  localIntEPhiOverEz = deltaXSimpsonSixth * (2 * fieldSum1EphiOverEz + 4 * fieldSum2EphiOverEz + fieldephi0 * eZ0Inv + fieldephi1 * eZ1Inv);
   localIntDeltaEz = deltaXSimpsonSixth * (2 * fieldSum1Ez + 4 * fieldSum2Ez + fieldez0 + fieldez1);
 }
 
@@ -597,8 +605,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcLocalDistortionsCorrection
       for (size_t iZ = 0; iZ < Nz - 1; ++iZ) {
 
         // set z coordinated depending on distortions or correction calculation
-        const DataT z0 = type == 1 ? getZVertex(iZ + 1) : getZVertex(iZ);
-        const DataT z1 = type == 1 ? getZVertex(iZ) : getZVertex(iZ + 1);
+        const DataT z0 = type == Type::Corrections ? getZVertex(iZ + 1) : getZVertex(iZ);
+        const DataT z1 = type == Type::Corrections ? getZVertex(iZ) : getZVertex(iZ + 1);
 
         const int iSteps = mStepWidth;
         const DataT stepSize = (z1 - z0) / iSteps;
@@ -629,7 +637,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcLocalDistortionsCorrection
           }
         }
 
-        if (type == 1) {
+        if (type == Type::Corrections) {
           mLocalCorrdR[side](iZ + 1, iR, iPhi) = drTmp;
           mLocalCorrdRPhi[side](iZ + 1, iR, iPhi) = dRPhiTmp;
           mLocalCorrdZ[side](iZ + 1, iR, iPhi) = dzTmp;
@@ -641,7 +649,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcLocalDistortionsCorrection
       }
     }
   }
-  if (type == 1) {
+  if (type == Type::Corrections) {
     mIsLocalCorrSet[side] = true;
   } else {
     mIsLocalDistSet[side] = true;

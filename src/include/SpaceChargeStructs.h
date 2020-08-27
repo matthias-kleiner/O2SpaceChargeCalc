@@ -13,13 +13,18 @@ struct AnalyticalFields {
   DataT parB{0.5};                            ///< parameter [1] of functions
   DataT parC{1e-4};                           ///< parameter [2] of functions
   static constexpr unsigned int ID = 0;       ///< needed to distinguish between the differrent structs
-  const o2::tpc::Side side{o2::tpc::Side::A}; ///< side of the TPC. Since the absolute value is taken during the calculations the choice of the side is arbitrary.
+  o2::tpc::Side side{o2::tpc::Side::A}; ///< side of the TPC. Since the absolute value is taken during the calculations the choice of the side is arbitrary.
 
   AnalyticalFields(const o2::tpc::Side sideTmp = o2::tpc::Side::A) : side{sideTmp} {};
 
   o2::tpc::Side getSide() const
   {
     return side;
+  }
+
+  void setSide(const o2::tpc::Side sideTmp)
+  {
+    side = sideTmp;
   }
 
   /// \param r r coordinate

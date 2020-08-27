@@ -156,14 +156,13 @@ class TriCubicInterpolator
     return sThreadnum;
   }
 
-  /// \return performs a check if the interpolator can be used with current number of threads
+  /// \return performs a check if the interpolator can be used with maximum number of threads
   bool checkThreadSafety() const
   {
-    return mNThreads >= omp_get_num_threads();
+    return mNThreads >= omp_get_max_threads();
   }
 
  private:
-
   // matrix containing the 'relationship between the derivatives at the corners of the elements and the coefficients'
   inline static Vc::Memory<VDataT, 64> sMat[64]{
     {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -249,6 +248,36 @@ class TriCubicInterpolator
   std::unique_ptr<Vector<unsigned int, FDim>[]> mLastInd = std::make_unique<Vector<unsigned int, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for the last cell are stored)
   std::unique_ptr<bool[]> mInitialized = std::make_unique<bool[]>(mNThreads);                                         ///< sets the flag if the coefficients are evaluated at least once
 
+  enum GridPos {
+    InnerVolume = 26,
+    Edge0 = 0,
+    Edge1 = 1,
+    Edge2 = 2,
+    Edge3 = 3,
+    Edge4 = 4,
+    Edge5 = 5,
+    Edge6 = 6,
+    Edge7 = 7,
+    LineA = 8,
+    LineB = 9,
+    LineC = 10,
+    LineD = 11,
+    LineE = 12,
+    LineF = 13,
+    LineG = 14,
+    LineH = 15,
+    LineI = 16,
+    LineJ = 17,
+    LineK = 18,
+    LineL = 19,
+    SideXRight = 20,
+    SideXLeft = 21,
+    SideYRight = 22,
+    SideYLeft = 23,
+    SideZRight = 24,
+    SideZLeft = 25
+  };
+
   // use std::pow?
   DataT uiPow(DataT base, unsigned int exponent) const;
 
@@ -257,6 +286,8 @@ class TriCubicInterpolator
   // calculate the coefficients needed for the interpolation using the 64*64 matrix.
   // this is the 'slow' part of the code and might be optimized
   void calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const;
+
+  void calcCoefficientsExtrapolation(const unsigned int ix, const unsigned int iy, const unsigned int iz) const;
 
   DataT interpolate(const Vector<DataT, 3>& pos) const;
 
@@ -277,13 +308,205 @@ class TriCubicInterpolator
 
   void initInterpolator(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
   {
-    calcCoefficients(ix, iy, iz);
+    // calcCoefficients(ix, iy, iz);
+    calcCoefficientsExtrapolation(ix, iy, iz);
 
     // store current cell
     mInitialized[sThreadnum] = true;
     mLastInd[sThreadnum][FX] = ix;
     mLastInd[sThreadnum][FY] = iy;
     mLastInd[sThreadnum][FZ] = iz;
+  }
+
+  DataT linearExtrapolation(const DataT valk, const DataT valk1, const int xExtra) const;
+
+  bool isSideLeft(const int ind) const
+  {
+    if (ind == 0) {
+      return true;
+    }
+    return false;
+  }
+
+  int findPos(const int ix, const int iy, const int iz) const
+  {
+    int pos = -1;
+    if (isInInnerVolume(ix, iy, iz, pos)) {
+      return pos;
+    }
+
+    if (findEdge(ix, iy, iz, pos)) {
+      return pos;
+    }
+
+    if (findLine(ix, iy, iz, pos)) {
+      return pos;
+    }
+
+    if (findSide(ix, iy, iz, pos)) {
+      return pos;
+    }
+    return -1;
+  }
+
+  bool isInInnerVolume(const int ix, const int iy, const int iz, int& posType) const
+  {
+    if (ix >= 1 && ix < Nx - 2 && iy >= 1 && iy < Ny - 2 && iz >= 1 && iz < Nz - 2) {
+      posType = InnerVolume;
+      return true;
+    }
+    return false;
+  }
+
+  bool findEdge(const int ix, const int iy, const int iz, int& posType) const
+  {
+    const int iR = 2;
+    if (ix == 0 && iy == 0) {
+      if (iz == 0) {
+        // edge 0
+        posType = GridPos::Edge0;
+        return true;
+      } else if (iz == Nz - iR) {
+        //edge 4
+        posType = GridPos::Edge4;
+        return true;
+      }
+    } else if (ix == Nx - iR && iy == 0) {
+      if (iz == 0) {
+        // edge 1
+        posType = GridPos::Edge1;
+        return true;
+      } else if (iz == Nz - iR) {
+        //edge 5
+        posType = GridPos::Edge5;
+        return true;
+      }
+    } else if (ix == 0 && iy == Ny - iR) {
+      if (iz == 0) {
+        // edge 2
+        posType = GridPos::Edge2;
+        return true;
+      } else if (iz == Nz - iR) {
+        //edge 6
+        posType = GridPos::Edge6;
+        return true;
+      }
+    } else if (ix == Nx - iR && iy == Ny - iR) {
+      if (iz == 0) {
+        // edge 3
+        posType = GridPos::Edge3;
+        return true;
+      } else if (iz == Nz - iR) {
+        //edge 7
+        posType = GridPos::Edge7;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool findLine(const int ix, const int iy, const int iz, int& posType) const
+  {
+    const int iR = 2;
+    //check line
+    if (iy == 0) {
+      if (iz == 0) {
+        // line a
+        posType = GridPos::LineA;
+        return true;
+      } else if (iz == Nz - iR) {
+        // line e
+        posType = GridPos::LineE;
+        return true;
+      }
+      if (ix == 0) {
+        posType = GridPos::LineI;
+        return true;
+      } else if (ix == Nx - iR) {
+        posType = GridPos::LineJ;
+        return true;
+      }
+    } else if (iy == Ny - iR) {
+      if (iz == 0) {
+        // line b
+        posType = GridPos::LineB;
+        return true;
+      } else if (iz == Nz - iR) {
+        // line f
+        posType = GridPos::LineF;
+        return true;
+      }
+      if (ix == 0) {
+        posType = GridPos::LineK;
+        return true;
+      } else if (ix == Nx - iR) {
+        posType = GridPos::LineL;
+        return true;
+      }
+    } else if (ix == 0) {
+      if (iz == 0) {
+        //line c
+        posType = GridPos::LineC;
+        return true;
+      } else if (iz == Nz - iR) {
+        // line g
+        posType = GridPos::LineG;
+        return true;
+      }
+    } else if (ix == Nx - iR) {
+      if (iz == 0) {
+        //line d
+        posType = GridPos::LineD;
+        return true;
+      } else if (iz == Nz - iR) {
+        // line h
+        posType = GridPos::LineH;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool findSide(const int ix, const int iy, const int iz, int& posType) const
+  {
+    if (isSideRight(ix, FX)) {
+      posType = GridPos::SideXRight;
+      return true;
+    } else if (isSideLeft(ix)) {
+      posType = GridPos::SideXLeft;
+      return true;
+    }
+    if (isSideRight(iy, FY)) {
+      posType = GridPos::SideYRight;
+      return true;
+    } else if (isSideLeft(iy)) {
+      posType = GridPos::SideYLeft;
+      return true;
+    }
+    if (isSideRight(iz, FZ)) {
+      posType = GridPos::SideZRight;
+      return true;
+    } else if (isSideLeft(iz)) {
+      posType = GridPos::SideZLeft;
+      return true;
+    }
+    return false;
+  }
+
+  // bool isSideRight(const int ind, const int dim) const
+  // {
+  //   if (ind == mGridProperties.getN(dim) - 1) {
+  //     return true;
+  //   }
+  //   return false;
+  // }
+
+  bool isSideRight(const int ind, const int dim) const
+  {
+    if (ind == mGridProperties.getN(dim) - 2) {
+      return true;
+    }
+    return false;
   }
 };
 
@@ -322,6 +545,7 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::evalDerivative(const DataT dx, co
   return (ret * norm);
 }
 
+/*
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
 {
@@ -484,6 +708,1052 @@ void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned in
   // calc coeffiecients
   mCoefficients[sThreadnum] = sMatrixA * matrixPar;
 }
+*/
+
+// /*
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
+{
+  int deltaX[3]{};
+  int deltaY[3]{};
+  int deltaZ[3]{};
+
+  // set padding type: circular or standard
+  mCircular[0] ? getDataIndexCircularArray(ix, FX, deltaX) : getDataIndexNonCircularArray(ix, FX, deltaX);
+  mCircular[1] ? getDataIndexCircularArray(iy, FY, deltaY) : getDataIndexNonCircularArray(iy, FY, deltaY);
+  mCircular[2] ? getDataIndexCircularArray(iz, FZ, deltaZ) : getDataIndexNonCircularArray(iz, FZ, deltaZ);
+
+  // indices to datat storage
+  const int i0 = 0;
+  const int i1 = 1;
+  const int i2 = 2;
+  const size_t ii_x_y_z = mGridData.getDataIndex(ix, iy, iz);
+  const DataT i_x_y_z = mGridData[ii_x_y_z];
+  const DataT i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+  const DataT i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+  const DataT i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+  const DataT i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+  const DataT i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+  const DataT i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+  const DataT i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+
+  const DataT i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+  const DataT i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+  const DataT i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+  const DataT i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+  const DataT i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+  const DataT i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+  const DataT i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+  const DataT i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+
+  const DataT i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+  const DataT i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+  const DataT i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+  const DataT i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+  const DataT i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+  const DataT i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+  const DataT i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+  const DataT i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+
+  const DataT i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+  const DataT i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+  const DataT i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+  const DataT i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+  const DataT i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+  const DataT i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+  const DataT i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+  const DataT i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+
+  const DataT i_xm1_ym1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0]];
+  const DataT i_xp2_ym1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0]];
+  const DataT i_xm1_yp2_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2]];
+  const DataT i_xp2_yp2_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2]];
+  const DataT i_xm1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i1]];
+  const DataT i_xp2_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i1]];
+  const DataT i_xm1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i1]];
+  const DataT i_xp2_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i1]];
+
+  const DataT i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+  const DataT i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+  const DataT i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+  const DataT i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+  const DataT i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+  const DataT i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+  const DataT i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+  const DataT i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+
+  const DataT i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+  const DataT i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+  const DataT i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+  const DataT i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+  const DataT i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+  const DataT i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+  const DataT i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+  const DataT i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+
+  const DataT i_xm1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i0]];
+  const DataT i_xp2_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i0]];
+  const DataT i_xm1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i0]];
+  const DataT i_xp2_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i0]];
+  const DataT i_xm1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i2]];
+  const DataT i_xp2_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i2]];
+  const DataT i_xm1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i2]];
+  const DataT i_xp2_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i2]];
+
+  // load values to tmp Vc
+  // needed for first derivative
+  const Vector<DataT, 24> vecDeriv1A{
+    {i_xp1_y_z, i_xp2_y_z, i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_yp1_zp1, i_xp2_yp1_zp1,
+     i_x_yp1_z, i_xp1_yp1_z, i_x_yp2_z, i_xp1_yp2_z, i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_yp2_zp1, i_xp1_yp2_zp1,
+     i_x_y_zp1, i_xp1_y_zp1, i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_y_zp2, i_xp1_y_zp2, i_x_yp1_zp2, i_xp1_yp1_zp2}};
+
+  const Vector<DataT, 24> vecDeriv1B{
+    {i_xm1_y_z, i_x_y_z, i_xm1_yp1_z, i_x_yp1_z, i_xm1_y_zp1, i_x_y_zp1, i_xm1_yp1_zp1, i_x_yp1_zp1,
+     i_x_ym1_z, i_xp1_ym1_z, i_x_y_z, i_xp1_y_z, i_x_ym1_zp1, i_xp1_ym1_zp1, i_x_y_zp1, i_xp1_y_zp1,
+     i_x_y_zm1, i_xp1_y_zm1, i_x_yp1_zm1, i_xp1_yp1_zm1, i_x_y_z, i_xp1_y_z, i_x_yp1_z, i_xp1_yp1_z}};
+
+  // needed for second derivative
+  const Vector<DataT, 24> vecDeriv2A{
+    {i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_yp2_z, i_xp2_yp2_z, i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_yp2_zp1, i_xp2_yp2_zp1,
+     i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_y_zp2, i_xp2_y_zp2, i_xp1_yp1_zp2, i_xp2_yp1_zp2,
+     i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_yp2_zp1, i_xp1_yp2_zp1, i_x_yp1_zp2, i_xp1_yp1_zp2, i_x_yp2_zp2, i_xp1_yp2_zp2}};
+
+  const Vector<DataT, 24> vecDeriv2B{
+    {i_xm1_yp1_z, i_x_yp1_z, i_xm1_yp2_z, i_x_yp2_z, i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_yp2_zp1, i_x_yp2_zp1,
+     i_xm1_y_zp1, i_x_y_zp1, i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_y_zp2, i_x_y_zp2, i_xm1_yp1_zp2, i_x_yp1_zp2,
+     i_x_ym1_zp1, i_xp1_ym1_zp1, i_x_y_zp1, i_xp1_y_zp1, i_x_ym1_zp2, i_xp1_ym1_zp2, i_x_y_zp2, i_xp1_y_zp2}};
+
+  const Vector<DataT, 24> vecDeriv2C{
+    {i_xp1_ym1_z, i_xp2_ym1_z, i_xp1_y_z, i_xp2_y_z, i_xp1_ym1_zp1, i_xp2_ym1_zp1, i_xp1_y_zp1, i_xp2_y_zp1,
+     i_xp1_y_zm1, i_xp2_y_zm1, i_xp1_yp1_zm1, i_xp2_yp1_zm1, i_xp1_y_z, i_xp2_y_z, i_xp1_yp1_z, i_xp2_yp1_z,
+     i_x_yp1_zm1, i_xp1_yp1_zm1, i_x_yp2_zm1, i_xp1_yp2_zm1, i_x_yp1_z, i_xp1_yp1_z, i_x_yp2_z, i_xp1_yp2_z}};
+
+  const Vector<DataT, 24> vecDeriv2D{
+    {i_xm1_ym1_z, i_x_ym1_z, i_xm1_y_z, i_x_y_z, i_xm1_ym1_zp1, i_x_ym1_zp1, i_xm1_y_zp1, i_x_y_zp1,
+     i_xm1_y_zm1, i_x_y_zm1, i_xm1_yp1_zm1, i_x_yp1_zm1, i_xm1_y_z, i_x_y_z, i_xm1_yp1_z, i_x_yp1_z,
+     i_x_ym1_zm1, i_xp1_ym1_zm1, i_x_y_zm1, i_xp1_y_zm1, i_x_ym1_z, i_xp1_ym1_z, i_x_y_z, i_xp1_y_z}};
+
+  // needed for third derivative
+  const Vector<DataT, 8> vecDeriv3A{{i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_yp2_zp1, i_xp2_yp2_zp1, i_xp1_yp1_zp2, i_xp2_yp1_zp2, i_xp1_yp2_zp2, i_xp2_yp2_zp2}};
+  const Vector<DataT, 8> vecDeriv3B{{i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_yp2_zp1, i_x_yp2_zp1, i_xm1_yp1_zp2, i_x_yp1_zp2, i_xm1_yp2_zp2, i_x_yp2_zp2}};
+  const Vector<DataT, 8> vecDeriv3C{{i_xp1_ym1_zp1, i_xp2_ym1_zp1, i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_ym1_zp2, i_xp2_ym1_zp2, i_xp1_y_zp2, i_xp2_y_zp2}};
+  const Vector<DataT, 8> vecDeriv3D{{i_xm1_ym1_zp1, i_x_ym1_zp1, i_xm1_y_zp1, i_x_y_zp1, i_xm1_ym1_zp2, i_x_ym1_zp2, i_xm1_y_zp2, i_x_y_zp2}};
+  const Vector<DataT, 8> vecDeriv3E{{i_xp1_yp1_zm1, i_xp2_yp1_zm1, i_xp1_yp2_zm1, i_xp2_yp2_zm1, i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_yp2_z, i_xp2_yp2_z}};
+  const Vector<DataT, 8> vecDeriv3F{{i_xm1_yp1_zm1, i_x_yp1_zm1, i_xm1_yp2_zm1, i_x_yp2_zm1, i_xm1_yp1_z, i_x_yp1_z, i_xm1_yp2_z, i_x_yp2_z}};
+  const Vector<DataT, 8> vecDeriv3G{{i_xp1_ym1_zm1, i_xp2_ym1_zm1, i_xp1_y_zm1, i_xp2_y_zm1, i_xp1_ym1_z, i_xp2_ym1_z, i_xp1_y_z, i_xp2_y_z}};
+  const Vector<DataT, 8> vecDeriv3H{{i_xm1_ym1_zm1, i_x_ym1_zm1, i_xm1_y_zm1, i_x_y_zm1, i_xm1_ym1_z, i_x_ym1_z, i_xm1_y_z, i_x_y_z}};
+
+  // factor for first derivative
+  const DataT fac1{0.5};
+  const Vector<DataT, 24> vfac1{
+    {fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
+     fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
+     fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1}};
+
+  // factor for second derivative
+  const DataT fac2{0.25};
+  const Vector<DataT, 24> vfac2{
+    {fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
+     fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
+     fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2}};
+
+  // factor for third derivative
+  const DataT fac3{0.125};
+  const Vector<DataT, 8> vfac3{{fac3, fac3, fac3, fac3, fac3, fac3, fac3, fac3}};
+
+  // compute the derivatives
+  const Vector<DataT, 24> vecDeriv1Res{vfac1 * (vecDeriv1A - vecDeriv1B)};
+  const Vector<DataT, 24> vecDeriv2Res{vfac2 * (vecDeriv2A - vecDeriv2B - vecDeriv2C + vecDeriv2D)};
+  const Vector<DataT, 8> vecDeriv3Res{vfac3 * (vecDeriv3A - vecDeriv3B - vecDeriv3C + vecDeriv3D - vecDeriv3E + vecDeriv3F + vecDeriv3G - vecDeriv3H)};
+
+  const Vector<DataT, 64> matrixPar{
+    {i_x_y_z, i_xp1_y_z, i_x_yp1_z, i_xp1_yp1_z, i_x_y_zp1, i_xp1_y_zp1, i_x_yp1_zp1, i_xp1_yp1_zp1,
+     vecDeriv1Res[0], vecDeriv1Res[1], vecDeriv1Res[2], vecDeriv1Res[3], vecDeriv1Res[4], vecDeriv1Res[5], vecDeriv1Res[6], vecDeriv1Res[7], vecDeriv1Res[8], vecDeriv1Res[9], vecDeriv1Res[10],
+     vecDeriv1Res[11], vecDeriv1Res[12], vecDeriv1Res[13], vecDeriv1Res[14], vecDeriv1Res[15], vecDeriv1Res[16], vecDeriv1Res[17], vecDeriv1Res[18], vecDeriv1Res[19], vecDeriv1Res[20], vecDeriv1Res[21],
+     vecDeriv1Res[22], vecDeriv1Res[23], vecDeriv2Res[0], vecDeriv2Res[1], vecDeriv2Res[2], vecDeriv2Res[3], vecDeriv2Res[4], vecDeriv2Res[5], vecDeriv2Res[6], vecDeriv2Res[7], vecDeriv2Res[8], vecDeriv2Res[9],
+     vecDeriv2Res[10], vecDeriv2Res[11], vecDeriv2Res[12], vecDeriv2Res[13], vecDeriv2Res[14], vecDeriv2Res[15], vecDeriv2Res[16], vecDeriv2Res[17], vecDeriv2Res[18], vecDeriv2Res[19], vecDeriv2Res[20],
+     vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]}};
+
+  // calc coeffiecients
+  mCoefficients[sThreadnum] = sMatrixA * matrixPar;
+}
+// */
+
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::linearExtrapolation(const DataT valk, const DataT valk1, const int xExtra) const
+{
+  const DataT val = valk - xExtra * (valk1 - valk);
+  return val;
+}
+
+template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
+void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficientsExtrapolation(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
+{
+  int deltaX[3]{mGridProperties.getDeltaDataIndex(-1, 0), mGridProperties.getDeltaDataIndex(1, 0), mGridProperties.getDeltaDataIndex(2, 0)};
+  int deltaY[3]{mGridProperties.getDeltaDataIndex(-1, 1), mGridProperties.getDeltaDataIndex(1, 1), mGridProperties.getDeltaDataIndex(2, 1)};
+  int deltaZ[3]{};
+  getDataIndexCircularArray(iz, FZ, deltaZ);
+
+  const int location = findPos(ix, iy, iz);
+
+  //     +---------+
+  //   /         / |
+  // /         /   |
+  // +--------+    |
+  // |        |    |
+  // |        |    +
+  // |        |   /
+  // |        | /
+  // +--------+
+
+  // indices to data storage
+  const int i0 = 0;
+  const int i1 = 1;
+  const int i2 = 2;
+  const size_t ii_x_y_z = mGridData.getDataIndex(ix, iy, iz);
+  const DataT i_x_y_z = mGridData[ii_x_y_z];
+  DataT i_xp1_y_z{};
+  DataT i_x_yp1_z{};
+  DataT i_xp1_yp1_z{};
+  DataT i_x_y_zp1{};
+  DataT i_xp1_y_zp1{};
+  DataT i_x_yp1_zp1{};
+  DataT i_xm1_y_z{};
+  DataT i_xm1_yp1_z{};
+  DataT i_xm1_y_zp1{};
+  DataT i_xm1_yp1_zp1{};
+  DataT i_xm1_ym1_z{};
+  DataT i_xm1_yp2_z{};
+  DataT i_xm1_ym1_zp1{};
+  DataT i_xm1_yp2_zp1{};
+  DataT i_xm1_y_zm1{};
+  DataT i_xm1_yp1_zm1{};
+  DataT i_xm1_y_zp2{};
+  DataT i_xm1_yp1_zp2{};
+  DataT i_xm1_ym1_zm1{};
+  DataT i_xm1_yp2_zm1{};
+  DataT i_xm1_ym1_zp2{};
+  DataT i_xm1_yp2_zp2{};
+  DataT i_xp1_yp1_zp1{};
+  DataT i_xp2_y_z{};
+  DataT i_xp2_yp1_z{};
+  DataT i_xp2_y_zp1{};
+  DataT i_xp2_yp1_zp1{};
+  DataT i_x_ym1_z{};
+  DataT i_xp1_ym1_z{};
+  DataT i_x_yp2_z{};
+  DataT i_xp1_yp2_z{};
+  DataT i_x_ym1_zp1{};
+  DataT i_xp1_ym1_zp1{};
+  DataT i_x_yp2_zp1{};
+  DataT i_xp1_yp2_zp1{};
+  DataT i_x_y_zm1{};
+  DataT i_xp1_y_zm1{};
+  DataT i_x_yp1_zm1{};
+  DataT i_xp1_yp1_zm1{};
+  DataT i_x_y_zp2{};
+  DataT i_xp1_y_zp2{};
+  DataT i_x_yp1_zp2{};
+  DataT i_xp1_yp1_zp2{};
+  DataT i_xp2_ym1_z{};
+  DataT i_xp2_yp2_z{};
+  DataT i_xp2_ym1_zp1{};
+  DataT i_xp2_yp2_zp1{};
+  DataT i_xp2_y_zm1{};
+  DataT i_xp2_yp1_zm1{};
+  DataT i_xp2_y_zp2{};
+  DataT i_xp2_yp1_zp2{};
+  DataT i_x_ym1_zm1{};
+  DataT i_xp1_ym1_zm1{};
+  DataT i_x_yp2_zm1{};
+  DataT i_xp1_yp2_zm1{};
+  DataT i_x_ym1_zp2{};
+  DataT i_xp1_ym1_zp2{};
+  DataT i_x_yp2_zp2{};
+  DataT i_xp1_yp2_zp2{};
+  DataT i_xp2_ym1_zm1{};
+  DataT i_xp2_yp2_zm1{};
+  DataT i_xp2_ym1_zp2{};
+  DataT i_xp2_yp2_zp2{};
+
+  switch (location) {
+    case InnerVolume: case SideZRight: case SideZLeft: default:
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_ym1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0]];
+      i_xm1_yp2_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2]];
+      i_xm1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i1]];
+      i_xm1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i0]];
+      i_xm1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i0]];
+      i_xm1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i2]];
+      i_xm1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_ym1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0]];
+      i_xp2_yp2_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2]];
+      i_xp2_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i1]];
+      i_xp2_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+      i_xp2_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i0]];
+      i_xp2_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i0]];
+      i_xp2_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i2]];
+      i_xp2_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i2]];
+      break;
+
+    case SideXRight:
+    case LineD:
+    case LineH:
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_ym1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0]];
+      i_xm1_yp2_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2]];
+      i_xm1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i1]];
+      i_xm1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i0]];
+      i_xm1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i0]];
+      i_xm1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i2]];
+      i_xm1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+
+      i_xp2_y_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z], 1);
+      i_xp2_yp1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp2_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp2_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0]], 1);
+      i_xp2_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2]], 1);
+      i_xp2_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]], 1);
+      i_xp2_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]], 1);
+      i_xp2_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp2_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp2_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp2_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]], 1);
+      i_xp2_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]], 1);
+      i_xp2_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]], 1);
+      i_xp2_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]], 1);
+      break;
+
+    case SideYRight:
+    case LineB:
+    case LineF:
+      i_xm1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0]], 1);
+      i_xm1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]], 1);
+      i_xm1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]], 1);
+      i_xm1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]], 1);
+      i_x_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z], 1);
+      i_xp1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_x_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xp2_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2]], 1);
+      i_xp2_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]], 1);
+      i_x_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_x_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xp2_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]], 1);
+      i_xp2_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_ym1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0]];
+      i_xm1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i0]];
+      i_xm1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_ym1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0]];
+      i_xp2_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      i_xp2_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i0]];
+      i_xp2_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i2]];
+      break;
+
+    case SideYLeft:
+    case LineA:
+    case LineE:
+      i_xm1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]], 1);
+      i_xm1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xm1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xm1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]], 1);
+      i_x_ym1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], 1);
+      i_x_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]], 1);
+      i_xp2_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]], 1);
+      i_x_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]], 1);
+      i_x_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp2_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_yp2_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2]];
+      i_xm1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i0]];
+      i_xm1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_yp2_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2]];
+      i_xp2_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+      i_xp2_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i0]];
+      i_xp2_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i2]];
+      break;
+
+    case SideXLeft:
+    case LineC:
+    case LineG:
+      i_xm1_y_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_xm1_yp1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], 1);
+      i_xm1_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xm1_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xm1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]], 1);
+      i_xm1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]], 1);
+      i_xm1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]], 1);
+      i_xm1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]], 1);
+      i_xm1_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_xm1_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xm1_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xm1_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]], 1);
+      i_xm1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]], 1);
+      i_xm1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]], 1);
+      i_xm1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]], 1);
+      i_xm1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_ym1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0]];
+      i_xp2_yp2_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2]];
+      i_xp2_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i1]];
+      i_xp2_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+      i_xp2_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i0]];
+      i_xp2_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i0]];
+      i_xp2_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i2]];
+      i_xp2_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i2]];
+      break;
+
+    case Edge0:
+    case Edge4:
+    case LineI:
+      // these can be extrapolated directly
+      i_xm1_y_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_xm1_yp1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], 1);
+      i_xm1_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xm1_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xm1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]], 1);
+      i_xm1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]], 1);
+      i_xm1_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xm1_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]], 1);
+      i_xm1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]], 1);
+      i_xm1_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xm1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]], 1);
+      i_xm1_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+
+      // these can be extrapolated directly
+      i_x_ym1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], 1);
+      i_x_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]], 1);
+      i_xp2_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]], 1);
+      i_x_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]], 1);
+      i_x_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp2_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]], 1);
+
+      // these need some steps first
+      i_xm1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], 1);
+      i_xm1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xm1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xm1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_yp2_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2]];
+      i_xp2_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+      i_xp2_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i0]];
+      i_xp2_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i2] + deltaZ[i2]];
+      break;
+
+    case Edge1:
+    case Edge5:
+    case LineJ:
+      // these can be extrapolated directly
+      i_xp2_y_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z], 1);
+      i_xp2_yp1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp2_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp2_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2]], 1);
+      i_xp2_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]], 1);
+      i_xp2_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp2_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp2_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp2_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]], 1);
+      i_xp2_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]], 1);
+
+      // these can be extrapolated directly
+      i_xm1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]], 1);
+      i_xm1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xm1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xm1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]], 1);
+      i_x_ym1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_x_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_x_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_x_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+
+      // these need some steps first
+      i_xp1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]], 1);
+      i_xp1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp2_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_yp2_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2]];
+      i_xm1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i0]];
+      i_xm1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_x_yp2_z = mGridData[ii_x_y_z + deltaY[i2]];
+      i_xp1_yp2_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2]];
+      i_x_yp2_zp1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i1]];
+      i_xp1_yp2_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_x_yp2_zm1 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i0]];
+      i_xp1_yp2_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i0]];
+      i_x_yp2_zp2 = mGridData[ii_x_y_z + deltaY[i2] + deltaZ[i2]];
+      i_xp1_yp2_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i2] + deltaZ[i2]];
+      break;
+
+    case Edge2:
+    case Edge6:
+    case LineK:
+      i_xm1_y_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_xm1_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xm1_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]], 1);
+      i_xm1_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]], 1);
+      i_xm1_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_xm1_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xm1_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]], 1);
+      i_xm1_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]], 1);
+
+      i_x_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z], 1);
+      i_xp1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_x_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xp2_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2]], 1);
+      i_xp2_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]], 1);
+      i_x_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_x_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xp2_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]], 1);
+      i_xp2_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]], 1);
+
+      i_xm1_yp1_z = linearExtrapolation(mGridData[ii_x_y_z], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]], 1);
+      i_xm1_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]], 1);
+      i_xm1_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]], 1);
+      i_xm1_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]], 1);
+
+      i_xm1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_xm1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_xm1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+      i_xm1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1]], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_xp2_y_z = mGridData[ii_x_y_z + deltaX[i2]];
+      i_xp2_yp1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1]];
+      i_xp2_y_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i1]];
+      i_xp2_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_xp2_ym1_z = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0]];
+      i_xp2_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i1]];
+      i_xp2_y_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i0]];
+      i_xp2_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i0]];
+      i_xp2_y_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaZ[i2]];
+      i_xp2_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      i_xp2_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i0]];
+      i_xp2_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i2] + deltaY[i0] + deltaZ[i2]];
+      break;
+
+    case Edge3:
+    case Edge7:
+    case LineL:
+      i_xm1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0]], 1);
+      i_xm1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]], 1);
+      i_xm1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]], 1);
+      i_xm1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]], 1);
+      i_x_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1]], mGridData[ii_x_y_z], 1);
+      i_xp1_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1]], 1);
+      i_x_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp1_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]], 1);
+      i_x_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp1_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]], 1);
+      i_x_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp1_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2] + deltaY[i1]], mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]], 1);
+
+      i_xp2_y_z = linearExtrapolation(mGridData[ii_x_y_z + deltaX[i1]], mGridData[ii_x_y_z], 1);
+      i_xp2_yp1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1]], 1);
+      i_xp2_y_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp2_yp1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]], 1);
+      i_xp2_ym1_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0]], 1);
+      i_xp2_ym1_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]], 1);
+      i_xp2_y_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp2_yp1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]], 1);
+      i_xp2_y_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp2_yp1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]], 1);
+      i_xp2_ym1_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]], 1);
+      i_xp2_ym1_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]], 1);
+
+      i_xp2_yp2_zp2 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i2]], 1);
+      i_xp2_yp2_zp1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i1]], 1);
+      i_xp2_yp2_zm1 = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0] + deltaX[i1]], mGridData[ii_x_y_z + deltaZ[i0]], 1);
+      i_xp2_yp2_z = linearExtrapolation(mGridData[ii_x_y_z + deltaY[i1] + deltaX[i1]], mGridData[ii_x_y_z], 1);
+
+      i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+      i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
+      i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
+      i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];
+      i_xp1_y_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i1]];
+      i_x_yp1_zp1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i1]];
+      i_xm1_y_z = mGridData[ii_x_y_z + deltaX[i0]];
+      i_xm1_yp1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1]];
+      i_xm1_y_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i1]];
+      i_xm1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i1]];
+      i_xm1_ym1_z = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0]];
+      i_xm1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i1]];
+      i_xm1_y_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i0]];
+      i_xm1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i0]];
+      i_xm1_y_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaZ[i2]];
+      i_xm1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i1] + deltaZ[i2]];
+      i_xm1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i0]];
+      i_xm1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i0] + deltaY[i0] + deltaZ[i2]];
+      i_xp1_yp1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i1]];
+      i_x_ym1_z = mGridData[ii_x_y_z + deltaY[i0]];
+      i_xp1_ym1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0]];
+      i_x_ym1_zp1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i1]];
+      i_xp1_ym1_zp1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i1]];
+      i_x_y_zm1 = mGridData[ii_x_y_z + deltaZ[i0]];
+      i_xp1_y_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i0]];
+      i_x_yp1_zm1 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i0]];
+      i_xp1_yp1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i0]];
+      i_x_y_zp2 = mGridData[ii_x_y_z + deltaZ[i2]];
+      i_xp1_y_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaZ[i2]];
+      i_x_yp1_zp2 = mGridData[ii_x_y_z + deltaY[i1] + deltaZ[i2]];
+      i_xp1_yp1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1] + deltaZ[i2]];
+      i_x_ym1_zm1 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i0]];
+      i_xp1_ym1_zm1 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i0]];
+      i_x_ym1_zp2 = mGridData[ii_x_y_z + deltaY[i0] + deltaZ[i2]];
+      i_xp1_ym1_zp2 = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i0] + deltaZ[i2]];
+      break;
+  }
+
+  /*
+std::cout<< "i_xp1_y_z: " << i_xp1_y_z<<std::endl;
+std::cout<< "i_x_yp1_z: " << i_x_yp1_z<<std::endl;
+std::cout<< "i_xp1_yp1_z: " <<i_xp1_yp1_z<<std::endl;
+std::cout<< "i_x_y_zp1: " <<i_x_y_zp1<<std::endl;
+std::cout<< "i_xp1_y_zp1: " <<i_xp1_y_zp1<<std::endl;
+std::cout<< "i_x_yp1_zp1: " <<i_x_yp1_zp1<<std::endl;
+std::cout<< "i_xm1_y_z: " <<i_xm1_y_z<<std::endl;
+std::cout<< "i_xm1_yp1_z: " <<i_xm1_yp1_z<<std::endl;
+std::cout<< "i_xm1_y_zp1: " <<i_xm1_y_zp1<<std::endl;
+std::cout<< "i_xm1_yp1_zp1: " <<i_xm1_yp1_zp1<<std::endl;
+std::cout<< "i_xm1_ym1_z: " <<i_xm1_ym1_z<<std::endl;
+std::cout<< "i_xm1_yp2_z: " <<i_xm1_yp2_z<<std::endl;
+std::cout<< "i_xm1_ym1_zp1: " <<i_xm1_ym1_zp1<<std::endl;
+std::cout<< "i_xm1_yp2_zp1: " <<i_xm1_yp2_zp1<<std::endl;
+std::cout<< "i_xm1_y_zm1: " <<i_xm1_y_zm1<<std::endl;
+std::cout<< "i_xm1_yp1_zm1: " <<i_xm1_yp1_zm1 << std::endl;
+std::cout<< "i_xm1_y_zp2: " <<i_xm1_y_zp2 << std::endl;
+std::cout<< "i_xm1_yp1_zp2: " <<i_xm1_yp1_zp2 << std::endl;
+std::cout<< "i_xm1_ym1_zm1: " <<i_xm1_ym1_zm1 << std::endl;
+std::cout<< "i_xm1_yp2_zm1: " <<i_xm1_yp2_zm1 << std::endl;
+std::cout<< "i_xm1_ym1_zp2: " <<i_xm1_ym1_zp2 << std::endl;
+std::cout<< "i_xm1_yp2_zp2: " <<i_xm1_yp2_zp2 << std::endl;
+std::cout<< "i_xp1_yp1_zp1: " <<i_xp1_yp1_zp1 << std::endl;
+std::cout<< "i_xp2_y_z: " <<i_xp2_y_z << std::endl;
+std::cout<< "i_xp2_yp1_z: " <<i_xp2_yp1_z << std::endl;
+std::cout<< "i_xp2_y_zp1: " <<i_xp2_y_zp1 << std::endl;
+std::cout<< "i_xp2_yp1_zp1: " <<i_xp2_yp1_zp1 << std::endl;
+std::cout<< "i_x_ym1_z: " <<i_x_ym1_z << std::endl;
+std::cout<< "i_xp1_ym1_z: " <<i_xp1_ym1_z << std::endl;
+std::cout<< "i_x_yp2_z: " <<i_x_yp2_z << std::endl;
+std::cout<< "i_xp1_yp2_z: " <<i_xp1_yp2_z << std::endl;
+std::cout<< "i_x_ym1_zp1: " <<i_x_ym1_zp1 << std::endl;
+std::cout<< "i_xp1_ym1_zp1: " <<i_xp1_ym1_zp1 << std::endl;
+std::cout<< "i_x_yp2_zp1: " <<i_x_yp2_zp1 << std::endl;
+std::cout<< "i_xp1_yp2_zp1: " <<i_xp1_yp2_zp1 << std::endl;
+std::cout<< "i_x_y_zm1: " <<i_x_y_zm1 << std::endl;
+std::cout<< "i_xp1_y_zm1: " <<i_xp1_y_zm1 << std::endl;
+std::cout<< "i_x_yp1_zm1: " <<i_x_yp1_zm1 << std::endl;
+std::cout<< "i_xp1_yp1_zm1: " <<i_xp1_yp1_zm1 << std::endl;
+std::cout<< "i_x_y_zp2: " <<i_x_y_zp2 << std::endl;
+std::cout<< "i_xp1_y_zp2: " <<i_xp1_y_zp2 << std::endl;
+std::cout<< "i_x_yp1_zp2: " <<i_x_yp1_zp2 << std::endl;
+std::cout<< "i_xp1_yp1_zp2: " <<i_xp1_yp1_zp2 << std::endl;
+std::cout<< "i_xp2_ym1_z: "<< i_xp2_ym1_z << std::endl;
+std::cout<< "i_xp2_yp2_z: " <<i_xp2_yp2_z << std::endl;
+std::cout<< "i_xp2_ym1_zp1: " <<i_xp2_ym1_zp1 << std::endl;
+std::cout<< "i_xp2_yp2_zp1: " <<i_xp2_yp2_zp1 << std::endl;
+std::cout<< "i_xp2_y_zm1: " <<i_xp2_y_zm1 << std::endl;
+std::cout<< "i_xp2_yp1_zm1: " <<i_xp2_yp1_zm1 << std::endl;
+std::cout<< "i_xp2_y_zp2: " <<i_xp2_y_zp2 << std::endl;
+std::cout<< "i_xp2_yp1_zp2: " <<i_xp2_yp1_zp2 << std::endl;
+std::cout<< "i_x_ym1_zm1: " <<i_x_ym1_zm1 << std::endl;
+std::cout<< "i_xp1_ym1_zm1: " <<i_xp1_ym1_zm1 << std::endl;
+std::cout<< "i_x_yp2_zm1: " <<i_x_yp2_zm1 << std::endl;
+std::cout<< "i_xp1_yp2_zm1: " <<i_xp1_yp2_zm1 << std::endl;
+std::cout<< "i_x_ym1_zp2: " <<i_x_ym1_zp2 << std::endl;
+std::cout<< "i_xp1_ym1_zp2: " << i_xp1_ym1_zp2 << std::endl;
+std::cout<< "i_x_yp2_zp2: "<<i_x_yp2_zp2 << std::endl;
+std::cout<< "i_xp1_yp2_zp2: "<<i_xp1_yp2_zp2 << std::endl;
+std::cout<< "i_xp2_ym1_zm1: "<<i_xp2_ym1_zm1 << std::endl;
+std::cout<< "i_xp2_yp2_zm1: "<<i_xp2_yp2_zm1 << std::endl;
+std::cout<< "i_xp2_ym1_zp2: "<<i_xp2_ym1_zp2 << std::endl;
+std::cout<< "i_xp2_yp2_zp2: "<<i_xp2_yp2_zp2 << std::endl;
+*/
+
+  // load values to tmp Vc
+  // needed for first derivative
+  const Vector<DataT, 24> vecDeriv1A{
+    {i_xp1_y_z, i_xp2_y_z, i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_yp1_zp1, i_xp2_yp1_zp1,
+     i_x_yp1_z, i_xp1_yp1_z, i_x_yp2_z, i_xp1_yp2_z, i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_yp2_zp1, i_xp1_yp2_zp1,
+     i_x_y_zp1, i_xp1_y_zp1, i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_y_zp2, i_xp1_y_zp2, i_x_yp1_zp2, i_xp1_yp1_zp2}};
+
+  const Vector<DataT, 24> vecDeriv1B{
+    {i_xm1_y_z, i_x_y_z, i_xm1_yp1_z, i_x_yp1_z, i_xm1_y_zp1, i_x_y_zp1, i_xm1_yp1_zp1, i_x_yp1_zp1,
+     i_x_ym1_z, i_xp1_ym1_z, i_x_y_z, i_xp1_y_z, i_x_ym1_zp1, i_xp1_ym1_zp1, i_x_y_zp1, i_xp1_y_zp1,
+     i_x_y_zm1, i_xp1_y_zm1, i_x_yp1_zm1, i_xp1_yp1_zm1, i_x_y_z, i_xp1_y_z, i_x_yp1_z, i_xp1_yp1_z}};
+
+  // needed for second derivative
+  const Vector<DataT, 24> vecDeriv2A{
+    {i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_yp2_z, i_xp2_yp2_z, i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_yp2_zp1, i_xp2_yp2_zp1,
+     i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_y_zp2, i_xp2_y_zp2, i_xp1_yp1_zp2, i_xp2_yp1_zp2,
+     i_x_yp1_zp1, i_xp1_yp1_zp1, i_x_yp2_zp1, i_xp1_yp2_zp1, i_x_yp1_zp2, i_xp1_yp1_zp2, i_x_yp2_zp2, i_xp1_yp2_zp2}};
+
+  const Vector<DataT, 24> vecDeriv2B{
+    {i_xm1_yp1_z, i_x_yp1_z, i_xm1_yp2_z, i_x_yp2_z, i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_yp2_zp1, i_x_yp2_zp1,
+     i_xm1_y_zp1, i_x_y_zp1, i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_y_zp2, i_x_y_zp2, i_xm1_yp1_zp2, i_x_yp1_zp2,
+     i_x_ym1_zp1, i_xp1_ym1_zp1, i_x_y_zp1, i_xp1_y_zp1, i_x_ym1_zp2, i_xp1_ym1_zp2, i_x_y_zp2, i_xp1_y_zp2}};
+
+  const Vector<DataT, 24> vecDeriv2C{
+    {i_xp1_ym1_z, i_xp2_ym1_z, i_xp1_y_z, i_xp2_y_z, i_xp1_ym1_zp1, i_xp2_ym1_zp1, i_xp1_y_zp1, i_xp2_y_zp1,
+     i_xp1_y_zm1, i_xp2_y_zm1, i_xp1_yp1_zm1, i_xp2_yp1_zm1, i_xp1_y_z, i_xp2_y_z, i_xp1_yp1_z, i_xp2_yp1_z,
+     i_x_yp1_zm1, i_xp1_yp1_zm1, i_x_yp2_zm1, i_xp1_yp2_zm1, i_x_yp1_z, i_xp1_yp1_z, i_x_yp2_z, i_xp1_yp2_z}};
+
+  const Vector<DataT, 24> vecDeriv2D{
+    {i_xm1_ym1_z, i_x_ym1_z, i_xm1_y_z, i_x_y_z, i_xm1_ym1_zp1, i_x_ym1_zp1, i_xm1_y_zp1, i_x_y_zp1,
+     i_xm1_y_zm1, i_x_y_zm1, i_xm1_yp1_zm1, i_x_yp1_zm1, i_xm1_y_z, i_x_y_z, i_xm1_yp1_z, i_x_yp1_z,
+     i_x_ym1_zm1, i_xp1_ym1_zm1, i_x_y_zm1, i_xp1_y_zm1, i_x_ym1_z, i_xp1_ym1_z, i_x_y_z, i_xp1_y_z}};
+
+  // needed for third derivative
+  const Vector<DataT, 8> vecDeriv3A{{i_xp1_yp1_zp1, i_xp2_yp1_zp1, i_xp1_yp2_zp1, i_xp2_yp2_zp1, i_xp1_yp1_zp2, i_xp2_yp1_zp2, i_xp1_yp2_zp2, i_xp2_yp2_zp2}};
+  const Vector<DataT, 8> vecDeriv3B{{i_xm1_yp1_zp1, i_x_yp1_zp1, i_xm1_yp2_zp1, i_x_yp2_zp1, i_xm1_yp1_zp2, i_x_yp1_zp2, i_xm1_yp2_zp2, i_x_yp2_zp2}};
+  const Vector<DataT, 8> vecDeriv3C{{i_xp1_ym1_zp1, i_xp2_ym1_zp1, i_xp1_y_zp1, i_xp2_y_zp1, i_xp1_ym1_zp2, i_xp2_ym1_zp2, i_xp1_y_zp2, i_xp2_y_zp2}};
+  const Vector<DataT, 8> vecDeriv3D{{i_xm1_ym1_zp1, i_x_ym1_zp1, i_xm1_y_zp1, i_x_y_zp1, i_xm1_ym1_zp2, i_x_ym1_zp2, i_xm1_y_zp2, i_x_y_zp2}};
+  const Vector<DataT, 8> vecDeriv3E{{i_xp1_yp1_zm1, i_xp2_yp1_zm1, i_xp1_yp2_zm1, i_xp2_yp2_zm1, i_xp1_yp1_z, i_xp2_yp1_z, i_xp1_yp2_z, i_xp2_yp2_z}};
+  const Vector<DataT, 8> vecDeriv3F{{i_xm1_yp1_zm1, i_x_yp1_zm1, i_xm1_yp2_zm1, i_x_yp2_zm1, i_xm1_yp1_z, i_x_yp1_z, i_xm1_yp2_z, i_x_yp2_z}};
+  const Vector<DataT, 8> vecDeriv3G{{i_xp1_ym1_zm1, i_xp2_ym1_zm1, i_xp1_y_zm1, i_xp2_y_zm1, i_xp1_ym1_z, i_xp2_ym1_z, i_xp1_y_z, i_xp2_y_z}};
+  const Vector<DataT, 8> vecDeriv3H{{i_xm1_ym1_zm1, i_x_ym1_zm1, i_xm1_y_zm1, i_x_y_zm1, i_xm1_ym1_z, i_x_ym1_z, i_xm1_y_z, i_x_y_z}};
+
+  // factor for first derivative
+  const DataT fac1{0.5};
+  const Vector<DataT, 24> vfac1{
+    {fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
+     fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1,
+     fac1, fac1, fac1, fac1, fac1, fac1, fac1, fac1}};
+
+  // factor for second derivative
+  const DataT fac2{0.25};
+  const Vector<DataT, 24> vfac2{
+    {fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
+     fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2,
+     fac2, fac2, fac2, fac2, fac2, fac2, fac2, fac2}};
+
+  // factor for third derivative
+  const DataT fac3{0.125};
+  const Vector<DataT, 8> vfac3{{fac3, fac3, fac3, fac3, fac3, fac3, fac3, fac3}};
+
+  // compute the derivatives
+  const Vector<DataT, 24> vecDeriv1Res{vfac1 * (vecDeriv1A - vecDeriv1B)};
+  const Vector<DataT, 24> vecDeriv2Res{vfac2 * (vecDeriv2A - vecDeriv2B - vecDeriv2C + vecDeriv2D)};
+  const Vector<DataT, 8> vecDeriv3Res{vfac3 * (vecDeriv3A - vecDeriv3B - vecDeriv3C + vecDeriv3D - vecDeriv3E + vecDeriv3F + vecDeriv3G - vecDeriv3H)};
+
+  const Vector<DataT, 64> matrixPar{
+    {i_x_y_z, i_xp1_y_z, i_x_yp1_z, i_xp1_yp1_z, i_x_y_zp1, i_xp1_y_zp1, i_x_yp1_zp1, i_xp1_yp1_zp1,
+     vecDeriv1Res[0], vecDeriv1Res[1], vecDeriv1Res[2], vecDeriv1Res[3], vecDeriv1Res[4], vecDeriv1Res[5], vecDeriv1Res[6], vecDeriv1Res[7], vecDeriv1Res[8], vecDeriv1Res[9], vecDeriv1Res[10],
+     vecDeriv1Res[11], vecDeriv1Res[12], vecDeriv1Res[13], vecDeriv1Res[14], vecDeriv1Res[15], vecDeriv1Res[16], vecDeriv1Res[17], vecDeriv1Res[18], vecDeriv1Res[19], vecDeriv1Res[20], vecDeriv1Res[21],
+     vecDeriv1Res[22], vecDeriv1Res[23], vecDeriv2Res[0], vecDeriv2Res[1], vecDeriv2Res[2], vecDeriv2Res[3], vecDeriv2Res[4], vecDeriv2Res[5], vecDeriv2Res[6], vecDeriv2Res[7], vecDeriv2Res[8], vecDeriv2Res[9],
+     vecDeriv2Res[10], vecDeriv2Res[11], vecDeriv2Res[12], vecDeriv2Res[13], vecDeriv2Res[14], vecDeriv2Res[15], vecDeriv2Res[16], vecDeriv2Res[17], vecDeriv2Res[18], vecDeriv2Res[19], vecDeriv2Res[20],
+     vecDeriv2Res[21], vecDeriv2Res[22], vecDeriv2Res[23], vecDeriv3Res[0], vecDeriv3Res[1], vecDeriv3Res[2], vecDeriv3Res[3], vecDeriv3Res[4], vecDeriv3Res[5], vecDeriv3Res[6], vecDeriv3Res[7]}};
+
+  // calc coeffiecients
+  mCoefficients[sThreadnum] = sMatrixA * matrixPar;
+}
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3>& pos) const
@@ -502,7 +1772,7 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3
     {valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
      valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
      valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],
-     valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3],valX[0], valX[1], valX[2], valX[3]}};
+     valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3], valX[0], valX[1], valX[2], valX[3]}};
 
   const DataT valY[4]{vals0[FY], pos[FY], vals2[FY], vals3[FY]};
   const Vector<DataT, 64> vecValY{
@@ -527,6 +1797,7 @@ template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
 {
   Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing()}; // needed for the grid index
+
   if (safe) {
     mGridProperties.clampToGridCircularRel(posRel, mCircular);
     mGridProperties.clampToGridRel(posRel, mCircular);
@@ -534,11 +1805,15 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const
     mGridProperties.checkStability(posRel, mCircular);
   }
 
-  const unsigned int ix = static_cast<unsigned int>(posRel[FX]);
-  const unsigned int iy = static_cast<unsigned int>(posRel[FY]);
-  const unsigned int iz = static_cast<unsigned int>(posRel[FZ]);
-  const Vector<unsigned int, FDim> index{{ix, iy, iz}};
+  // set last row to index last row -1 otherwise two points are missing on the right side of the grid
+  const unsigned int ixTmp = static_cast<unsigned int>(posRel[FX]);
+  const unsigned int iyTmp = static_cast<unsigned int>(posRel[FY]);
+  const unsigned int izTmp = static_cast<unsigned int>(posRel[FZ]);
+  const unsigned int ix = (!mCircular[FX] && ixTmp == Nx - 1) ? Nx - 2 : ixTmp;
+  const unsigned int iy = (!mCircular[FY] && iyTmp == Ny - 1) ? Ny - 2 : iyTmp;
+  const unsigned int iz = (!mCircular[FZ] && izTmp == Nz - 1) ? Nz - 2 : izTmp;
 
+  const Vector<unsigned int, FDim> index{{ix, iy, iz}};
   if (!mInitialized[sThreadnum] || !(mLastInd[sThreadnum] == index)) {
     initInterpolator(index[FX], index[FY], index[FZ]);
   }
@@ -553,14 +1828,12 @@ template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 void TriCubicInterpolator<DataT, Nx, Ny, Nz>::getDataIndexCircularArray(const int index0, const int dim, int arr[]) const
 {
   const int delta_min1 = getRegulatedDelta(index0, -1, dim, mGridProperties.getN(dim) - 1);
-  const int delta_min2 = getRegulatedDelta(index0, -2, dim, mGridProperties.getN(dim) - 2);
   const int delta_plus1 = getRegulatedDelta(index0, +1, dim, 1 - mGridProperties.getN(dim));
   const int delta_plus2 = getRegulatedDelta(index0, +2, dim, 2 - mGridProperties.getN(dim));
 
-  arr[0] = mGridProperties.getDeltaDataIndex(delta_min2, dim);
-  arr[1] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
-  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
-  arr[3] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
+  arr[0] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
+  arr[1] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
+  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
 }
 
 // for non perdiodic boundary condition
@@ -568,14 +1841,12 @@ template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 void TriCubicInterpolator<DataT, Nx, Ny, Nz>::getDataIndexNonCircularArray(const int index0, const int dim, int arr[]) const
 {
   const int delta_min1 = getRegulatedDelta(index0, -1, dim, 0);
-  const int delta_min2 = getRegulatedDelta(index0, -2, dim, delta_min1);
   const int delta_plus1 = getRegulatedDelta(index0, +1, dim, 0);
   const int delta_plus2 = getRegulatedDelta(index0, +2, dim, delta_plus1);
 
-  arr[0] = mGridProperties.getDeltaDataIndex(delta_min2, dim);
-  arr[1] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
-  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
-  arr[3] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
+  arr[0] = mGridProperties.getDeltaDataIndex(delta_min1, dim);
+  arr[1] = mGridProperties.getDeltaDataIndex(delta_plus1, dim);
+  arr[2] = mGridProperties.getDeltaDataIndex(delta_plus2, dim);
 }
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>

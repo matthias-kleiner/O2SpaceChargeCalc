@@ -269,20 +269,26 @@ class TriCubicInterpolator
 
   int mExtrapolationType = ExtrapolationType::Parabola; ///< sets which type of extrapolation for missing points at boundary is used. Linear and Parabola is only supported for perdiodic z axis and non periodic x and y axis;
 
-  // DEFINITION OF enum GridPos
-  //=============================
-  //           6------F---7
-  //         / |        / |
-  //       K   G      L   H
-  //     /     |    /     |
-  //   2---B------3       |
-  //   |      |   |       |
-  //   |      4---|---E---5
-  //   C     /    D     /
-  //   |   I      |   J
-  //   | /        | /
-  //   0---A------1
-  //=============================
+  //                 DEFINITION OF enum GridPos
+  //========================================================
+  //              Y
+  //              |             6------F---7
+  //              |           / |        / |
+  //              |         K   G YR   L   H
+  //              |       /     |    /     |
+  //              |      2---B------3      |
+  //              |      |      |   |      |
+  //              |      |      4---|---E--5
+  //              |      C XL  /    D XR  /
+  //              |      |   I  YL  |   J
+  //              |      | /        | /
+  //              |      0---A------1
+  //              |------------------------------- X
+  //            /
+  //          /
+  //        /
+  //      Z
+  //========================================================
 
   enum GridPos {
     InnerVolume = 26,
@@ -741,19 +747,19 @@ void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficientsExtrapolation(cons
     }
  };
 
-  std::cout<<"-------"<<std::endl;
-  for (int k = 0; k < 4; ++k) {
-    std::cout<<"---k--- "<< k << std::endl;
-  for (int i = 0; i < 4; ++i) {
-     for (int j = 0; j < 4; ++j) {
-         std::cout<< ind[k][i][j] << " ";
-     }
-     std::cout<<std::endl;
- }
- std::cout<<std::endl;
- std::cout<<std::endl;
-}
- std::cout<<"-------"<<std::endl;
+//   std::cout<<"-------"<<std::endl;
+//   for (int k = 0; k < 4; ++k) {
+//     std::cout<<"---k--- "<< k << std::endl;
+//   for (int i = 0; i < 4; ++i) {
+//      for (int j = 0; j < 4; ++j) {
+//          std::cout<< ind[k][i][j] << " ";
+//      }
+//      std::cout<<std::endl;
+//  }
+//  std::cout<<std::endl;
+//  std::cout<<std::endl;
+// }
+//  std::cout<<"-------"<<std::endl;
 // */
 
   switch (location) {
@@ -762,6 +768,8 @@ void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficientsExtrapolation(cons
     case SideZLeft:
     default:
       i_xp1_y_z = mGridData[ii_x_y_z + deltaX[i1]];
+
+      // ind[0]
       i_x_yp1_z = mGridData[ii_x_y_z + deltaY[i1]];
       i_xp1_yp1_z = mGridData[ii_x_y_z + deltaX[i1] + deltaY[i1]];
       i_x_y_zp1 = mGridData[ii_x_y_z + deltaZ[i1]];

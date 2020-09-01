@@ -331,8 +331,6 @@ class TriCubicInterpolator
 
   void calcCoefficientsExtrapolation(const unsigned int ix, const unsigned int iy, const unsigned int iz) const;
 
-  void calcCoefficientsExtrapolationTest(const unsigned int ix, const unsigned int iy, const unsigned int iz) const;
-
   DataT interpolate(const Vector<DataT, 3>& pos) const;
 
   DataT evalDerivative(const DataT dx, const DataT dy, const DataT dz, const size_t derx, const size_t dery, const size_t derz) const;
@@ -351,7 +349,7 @@ class TriCubicInterpolator
 
   void initInterpolator(const unsigned int ix, const unsigned int iy, const unsigned int iz) const;
 
-  DataT extrapolation(const DataT valk, const DataT valk1, const int valk2) const;
+  DataT extrapolation(const DataT valk, const DataT valk1, const DataT valk2) const;
 
   DataT linearExtrapolation(const DataT valk, const DataT valk1) const;
 
@@ -586,7 +584,7 @@ void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned in
 }
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
-DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::extrapolation(const DataT valk, const DataT valk1, const int valk2) const
+DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::extrapolation(const DataT valk, const DataT valk1, const DataT valk2) const
 {
   switch (mExtrapolationType) {
     case ExtrapolationType::Linear:
@@ -612,6 +610,7 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::parabolExtrapolation(const DataT 
   const DataT val = 3 * (valk - valk1) + valk2; // legendre polynom with x0=0, x1=1, x2=2 and x=-1
   return val;
 }
+
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficientsExtrapolation(const unsigned int ix, const unsigned int iy, const unsigned int iz) const

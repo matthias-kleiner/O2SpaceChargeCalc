@@ -108,6 +108,8 @@ class O2TPCPoissonSolver
   ///    = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
   void poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
 
+  void poissonMultiGrid3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
+
   /// Restrict2D
   ///
   ///    Grid transfer operator, restrict from fine -> coarse grid
@@ -173,7 +175,7 @@ class O2TPCPoissonSolver
   /// \param coefficient2 coefficients for \f$  V_{x-1,y,z} \f$
   /// \param coefficient3 coefficients for z
   /// \param coefficient4 coefficients for f(r,\phi,z)
-  void relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT h2, const DataT tempRatioZ,
+  void relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int iPhi, const int symmetry, const DataT h2, const DataT tempRatioZ,
                const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& coefficient4) const;
 
   /// Interpolation/Prolongation in 2D
@@ -269,6 +271,10 @@ class O2TPCPoissonSolver
                   std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
                   std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
 
+  void vCycle3D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, std::vector<Matrix3D>& tvArrayV,
+                  std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
+                  std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
+
   /// Residue3D
   ///
   ///    Compute residue from V(.) where V(.) is numerical potential and f(.).
@@ -288,7 +294,7 @@ class O2TPCPoissonSolver
   /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
   /// \param coefficient3 coefficient for z
   /// \param inverseCoefficient4 inverse coefficient for f(r,\phi,z)
-  void residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int symmetry, const DataT ih2, const DataT tempRatioZ,
+  void residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int iPhi, const int symmetry, const DataT ih2, const DataT tempRatioZ,
                  const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& inverseCoefficient4) const;
 
   ///    Boundary transfer  restrict from fine -> coarse grid

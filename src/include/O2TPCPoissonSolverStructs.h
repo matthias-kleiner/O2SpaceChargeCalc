@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <iomanip>
 
@@ -10,30 +11,30 @@ namespace tpc
 template <typename DataT = float>
 struct Matrix3D {
 
-  Matrix3D(const unsigned int nXTmp, const unsigned int nYTmp, const unsigned int nZTmp) : nX{nYTmp}, nY{nXTmp}, nZ{nZTmp}
+    Matrix3D(const unsigned int nRTmp, const unsigned int nZTmp, const unsigned int nPhiTmp) : nR{nZTmp}, nZ{nRTmp}, nPhi{nPhiTmp}
   {
-    storage.resize(nXTmp * nYTmp * nZTmp);
+    storage.resize(nRTmp * nZTmp * nPhiTmp);
   };
 
   Matrix3D(){};
 
-  // ix and iy must be swapped since in the original version TMatrixD where used! TMatrixD(row,column)
-  DataT& operator()(const unsigned int iy, const unsigned int ix, const unsigned int iz)
+  // iR and iZ must be swapped since in the original version TMatrixD where used! TMatrixD(row,column)
+  DataT& operator()(const unsigned int iZ, const unsigned int iR, const unsigned int iPhi)
   {
-    return storage[ix + nX * (iy + nY * iz)];
+    return storage[iR + nR * (iZ + nZ * iPhi)];
   }
 
-  const DataT& operator()(const unsigned int iy, const unsigned int ix, const unsigned int iz) const
+  const DataT& operator()(const unsigned int iZ, const unsigned int iR, const unsigned int iPhi) const
   {
-    return storage[ix + nX * (iy + nY * iz)];
+    return storage[iR + nR * (iZ + nZ * iPhi)];
   }
 
-  void resize(const unsigned int nXTmp, const unsigned int nYTmp, const unsigned int nZTmp)
+  void resize(const unsigned int nRTmp, const unsigned int nZTmp, const unsigned int nPhiTmp)
   {
-    nX = nXTmp;
-    nY = nYTmp;
+    nR = nRTmp;
     nZ = nZTmp;
-    storage.resize(nXTmp * nYTmp * nZTmp);
+    nPhi = nPhiTmp;
+    storage.resize(nRTmp * nZTmp * nPhiTmp);
   }
 
   const DataT* data() const {
@@ -46,32 +47,32 @@ struct Matrix3D {
 
   void print(const int nZStart = 0, int nZMax = -1)
   {
-    nZMax = nZMax == -1 ? nZ - 1 : nZMax;
+    nZMax = nZMax == -1 ? nPhi - 1 : nZMax;
     std::ostream& out = std::cout;
     out.precision(3);
     auto&& w = std::setw(9);
     out << std::endl;
 
-    for (unsigned int iz = nZStart; iz <= nZMax; ++iz) {
-      out << "z layer: " << iz << std::endl;
+    for (unsigned int iPhi = nZStart; iPhi <= nZMax; ++iPhi) {
+      out << "z layer: " << iPhi << std::endl;
       // print top x row
-      out << "⎡" << w << storage[0 + nX * (0 + nY * iz)];
-      for (unsigned int ix = 1; ix < nX; ++ix) {
-        out << ", " << w << storage[ix + nX * (0 + nY * iz)];
+      out << "⎡" << w << storage[0 + nR * (0 + nZ * iPhi)];
+      for (unsigned int iR = 1; iR < nR; ++iR) {
+        out << ", " << w << storage[iR + nR * (0 + nZ * iPhi)];
       }
       out << " ⎤" << std::endl;
 
-      for (unsigned int iy = 1; iy < nY - 1; ++iy) {
-        out << "⎢" << w << storage[0 + nX * (iy + nY * iz)];
-        for (unsigned int ix = 1; ix < nX; ++ix) {
-          out << ", " << w << storage[ix + nX * (iy + nY * iz)];
+      for (unsigned int iZ = 1; iZ < nZ - 1; ++iZ) {
+        out << "⎢" << w << storage[0 + nR * (iZ + nZ * iPhi)];
+        for (unsigned int iR = 1; iR < nR; ++iR) {
+          out << ", " << w << storage[iR + nR * (iZ + nZ * iPhi)];
         }
         out << " ⎥" << std::endl;
       }
 
-      out << "⎣" << w << storage[0 + nX * ((nY - 1) + nY * iz)];
-      for (unsigned int ix = 1; ix < nX; ++ix) {
-        out << ", " << w << storage[ix + nX * ((nY - 1) + nY * iz)];
+      out << "⎣" << w << storage[0 + nR * ((nZ - 1) + nZ * iPhi)];
+      for (unsigned int iR = 1; iR < nR; ++iR) {
+        out << ", " << w << storage[iR + nR * ((nZ - 1) + nZ * iPhi)];
       }
       out << " ⎦" << std::endl;
       out << std::endl;
@@ -79,9 +80,9 @@ struct Matrix3D {
     }
   }
 
-  unsigned int nX{};
-  unsigned int nY{};
+  unsigned int nR{};
   unsigned int nZ{};
+  unsigned int nPhi{};
   std::vector<DataT> storage{};
 };
 

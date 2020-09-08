@@ -117,12 +117,11 @@ class TriCubicInterpolator
   /// \param x x coordinate
   /// \param y y coordinate
   /// \param z z coordinate
-  /// \param safe checks if the given coordinates lie in the grid. if a value is out of the grid, the coordinate will be set to the border of the grid
   /// \return returns the interpolated value at given coordinate
-  DataT operator()(const DataT x, const DataT y, const DataT z, const bool safe = true) const
+  DataT operator()(const DataT x, const DataT y, const DataT z) const
   {
     const Vector<DataT, FDim> coordinates{{x, y, z}};  // vector holding the coordinates
-    const auto relPos = processInp(coordinates, safe); // vector containing the relative position to
+    const auto relPos = processInp(coordinates); // vector containing the relative position to
     const DataT res = interpolate(relPos);
     return res;
   }
@@ -135,12 +134,11 @@ class TriCubicInterpolator
   /// \param derz order of derivative d/dy: dery=1 -> d/dy f(x,y,z), dery=2 -> d^2/dy^2 f(x,y,z), dery=3 -> d^3/dy^3 f(x,y,z)
   /// \param derz order of derivative d/dz: derz=1 -> d/dz f(x,y,z), derz=2 -> d^2/dz^2 f(x,y,z), derz=3 -> d^3/dz^3 f(x,y,z)
   /// derx=1 and dery=2 -> d/dx * d^2/dy^2 * f(x,y,z)
-  /// \param safe checks if the given coordinates lie in the grid. if a value is out of the grid, the coordinate will be set to the border of the grid
   /// \return returns the interpolated derivative at given coordinate
-  DataT operator()(const DataT x, const DataT y, const DataT z, const size_t derx, const size_t dery, const size_t derz, const bool safe = true) const
+  DataT operator()(const DataT x, const DataT y, const DataT z, const size_t derx, const size_t dery, const size_t derz) const
   {
     const Vector<DataT, FDim> coordinates{{x, y, z}}; // vector holding the coordinates
-    const auto relPos = processInp(coordinates, safe);
+    const auto relPos = processInp(coordinates);
     return evalDerivative(relPos[0], relPos[1], relPos[2], derx, dery, derz);
   }
 
@@ -323,7 +321,7 @@ class TriCubicInterpolator
   // use std::pow?
   DataT uiPow(DataT base, unsigned int exponent) const;
 
-  const Vector<DataT, 3> processInp(const Vector<DataT, 3>& coordinates, const bool safe) const;
+  const Vector<DataT, 3> processInp(const Vector<DataT, 3>& coordinates) const;
 
   // calculate the coefficients needed for the interpolation using the 64*64 matrix.
   // this is the 'slow' part of the code and might be optimized
@@ -610,7 +608,6 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::parabolExtrapolation(const DataT 
   const DataT val = 3 * (valk - valk1) + valk2; // legendre polynom with x0=0, x1=1, x2=2 and x=-1
   return val;
 }
-
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficientsExtrapolation(const unsigned int ix, const unsigned int iy, const unsigned int iz) const
@@ -1576,17 +1573,14 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3
 }
 
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
-const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates, const bool safe) const
+const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates) const
 {
   const Vector<DataT, FDim> epsilon{{1e-5, 1e-5, 1e-5}};                                                                // add epsilon due to rounding errors
   Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing() + epsilon}; // needed for the grid index
 
-  if (safe) {
-    mGridProperties.clampToGridCircularRel(posRel, mCircular);
-    mGridProperties.clampToGridRel(posRel, mCircular);
-  } else {
-    mGridProperties.checkStability(posRel, mCircular);
-  }
+  mGridProperties.clampToGridCircularRel(posRel, mCircular);
+  const Vector<DataT, FDim> posRelN{posRel};
+  mGridProperties.clampToGridRel(posRel, mCircular);
 
   // set last row to index last row -1 otherwise two points are missing on the right side of the grid
   const unsigned int ixTmp = static_cast<unsigned int>(posRel[FX]);
@@ -1602,7 +1596,8 @@ const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const
   }
 
   const Vector<DataT, FDim> indexTmp{{static_cast<DataT>(ix), static_cast<DataT>(iy), static_cast<DataT>(iz)}};
-  const Vector<DataT, FDim> relPos{posRel - indexTmp};
+  // const Vector<DataT, FDim> relPos{posRel - indexTmp};
+  const Vector<DataT, FDim> relPos{posRelN - indexTmp};
   return relPos;
 }
 

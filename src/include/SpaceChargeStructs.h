@@ -111,27 +111,27 @@ struct NumericalFields {
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Er for given coordinate
-  DataT evalEr(DataT z, DataT r, DataT phi, const bool safe = true) const
+  DataT evalEr(DataT z, DataT r, DataT phi) const
   {
-    return interpolatorEr(z, r, phi, safe);
+    return interpolatorEr(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Ez for given coordinate
-  DataT evalEz(DataT z, DataT r, DataT phi, const bool safe = true) const
+  DataT evalEz(DataT z, DataT r, DataT phi) const
   {
-    return interpolatorEz(z, r, phi, safe);
+    return interpolatorEz(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for electric field Ephi for given coordinate
-  DataT evalEphi(DataT z, DataT r, DataT phi, const bool safe = true) const
+  DataT evalEphi(DataT z, DataT r, DataT phi) const
   {
-    return interpolatorEphi(z, r, phi, safe);
+    return interpolatorEphi(z, r, phi);
   }
 
   o2::tpc::Side getSide() const
@@ -166,27 +166,27 @@ struct DistCorrInterpolator {
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dR for given coordinate
-  DataT evaldR(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
+  DataT evaldR(const DataT z, const DataT r, const DataT phi) const
   {
-    return interpolatorDistCorrdR(z, r, phi, safe);
+    return interpolatorDistCorrdR(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dZ for given coordinate
-  DataT evaldZ(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
+  DataT evaldZ(const DataT z, const DataT r, const DataT phi) const
   {
-    return interpolatorDistCorrdZ(z, r, phi, safe);
+    return interpolatorDistCorrdZ(z, r, phi);
   }
 
   /// \param r r coordinate
   /// \param phi phi coordinate
   /// \param z z coordinate
   /// \return returns the function value for the local distortion or correction dRPhi for given coordinate
-  DataT evaldRPhi(const DataT z, const DataT r, const DataT phi, const bool safe = true) const
+  DataT evaldRPhi(const DataT z, const DataT r, const DataT phi) const
   {
-    return interpolatorDistCorrdRPhi(z, r, phi, safe);
+    return interpolatorDistCorrdRPhi(z, r, phi);
   }
 
   o2::tpc::Side getSide() const

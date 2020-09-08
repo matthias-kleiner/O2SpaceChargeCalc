@@ -94,52 +94,54 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setPotentialBoundary(const Ana
   }
 }
 
-// template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
-// void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
-// {
-//   // TODO MODIFY AliTPCPoissonSolver class to accept grid instead TMATRIXD
-//   TMatrixD* matricesPotential[Nphi];
-//   TMatrixD* matricesDensity[Nphi];
-//   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-//     matricesPotential[iPhi] = new TMatrixD(Nz, Nr);
-//     matricesDensity[iPhi] = new TMatrixD(Nz, Nr);
-//     for (size_t iR = 0; iR < Nr; ++iR) {
-//       for (size_t iZ = 0; iZ < Nz; ++iZ) {
-//         (*matricesPotential[iPhi])(iR, iZ) = mPotential[side](iZ, iR, iPhi);
-//         (*matricesDensity[iPhi])(iR, iZ) = mDensity[side](iZ, iR, iPhi);
-//       }
-//     }
-//   }
-//
-//   ASolv::sConvergenceError = stoppingConvergence;
-//   ASolv poissonSolver(mGrid3D);
-//
-//   ASolvAli::fgConvergenceError = stoppingConvergence;
-//   ASolvAli poissonSolverAli;
-//   const int symmetry = 0;
-//   std::cout<<"ALI"<<std::endl;
-//   poissonSolverAli.PoissonSolver3D(matricesPotential, matricesDensity, Nz, Nr, Nphi, maxIteration, symmetry);
-//   std::cout<<"ALI DONE"<<std::endl;
-//
-//   std::cout<<"O2"<<std::endl;
-//   // poissonSolver.poissonSolver3D(mPotential[side], mDensity[side], symmetry);
-//   std::cout<<"O2 DONE"<<std::endl;
-//
-//   //convert potential back to regular grid
-//   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-//     for (size_t iR = 0; iR < Nr; ++iR) {
-//       for (size_t iZ = 0; iZ < Nz; ++iZ) {
-//         // std::cout<<"mPotential: "<< mPotential[side](iZ,iR,iPhi) << std::endl;
-//         mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
-//       }
-//     }
-//   }
-//
-//   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-//     delete matricesPotential[iPhi];
-//     delete matricesDensity[iPhi];
-//   }
-// }
+/*
+template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
+{
+  // TODO MODIFY AliTPCPoissonSolver class to accept grid instead TMATRIXD
+  TMatrixD* matricesPotential[Nphi];
+  TMatrixD* matricesDensity[Nphi];
+  for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
+    matricesPotential[iPhi] = new TMatrixD(Nz, Nr);
+    matricesDensity[iPhi] = new TMatrixD(Nz, Nr);
+    for (size_t iR = 0; iR < Nr; ++iR) {
+      for (size_t iZ = 0; iZ < Nz; ++iZ) {
+        (*matricesPotential[iPhi])(iR, iZ) = mPotential[side](iZ, iR, iPhi);
+        (*matricesDensity[iPhi])(iR, iZ) = mDensity[side](iZ, iR, iPhi);
+      }
+    }
+  }
+
+  ASolv::sConvergenceError = stoppingConvergence;
+  ASolv poissonSolver(mGrid3D);
+
+  ASolvAli::fgConvergenceError = stoppingConvergence;
+  ASolvAli poissonSolverAli;
+  const int symmetry = 0;
+  std::cout<<"ALI"<<std::endl;
+  poissonSolverAli.PoissonSolver3D(matricesPotential, matricesDensity, Nz, Nr, Nphi, maxIteration, symmetry);
+  std::cout<<"ALI DONE"<<std::endl;
+
+  std::cout<<"O2"<<std::endl;
+  // poissonSolver.poissonSolver3D(mPotential[side], mDensity[side], symmetry);
+  std::cout<<"O2 DONE"<<std::endl;
+
+  //convert potential back to regular grid
+  for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
+    for (size_t iR = 0; iR < Nr; ++iR) {
+      for (size_t iZ = 0; iZ < Nz; ++iZ) {
+        // std::cout<<"mPotential: "<< mPotential[side](iZ,iR,iPhi) << std::endl;
+        mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
+      }
+    }
+  }
+
+  for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
+    delete matricesPotential[iPhi];
+    delete matricesDensity[iPhi];
+  }
+}
+*/
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
@@ -170,105 +172,86 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setEField(const AnalyticalFiel
   mIsEfieldSet[side] = true;
 }
 
-// template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
-// void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side side)
-// {
-//   const int symmetry = 0;
-//
-//   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
-//     size_t tmpPlus = iPhi + 1;
-//     int signPlus = 1;
-//     int tmpMinus = static_cast<int>(iPhi - 1);
-//     int signMinus = 1;
-//     if (symmetry == 1 || symmetry == -1) { // Reflection symmetry in phi (e.g. symmetry at sector boundaries, or half sectors, etc.)
-//       if (tmpPlus > Nphi - 1) {
-//         if (symmetry == -1) {
-//           signPlus = -1;
-//         }
-//         tmpPlus = Nphi - 2;
-//       }
-//       if (tmpMinus < 0) {
-//         tmpMinus = 1; // SHOULD IT BE =0?
-//         if (symmetry == -1) {
-//           signMinus = -1;
-//         }
-//       }
-//     } else { // No Symmetries in phi, no boundaries, the calculations is continuous across all phi
-//       if (tmpPlus > Nphi - 1) {
-//         tmpPlus = iPhi + 1 - Nphi;
-//       }
-//       if (tmpMinus < 0) {
-//         tmpMinus = static_cast<int>(iPhi - 1 + Nphi);
-//       }
-//     }
-//
-//     const size_t tmpMinusS = static_cast<size_t>(tmpMinus);
-//
-//     // for non-boundary V
-//     for (size_t iR = 1; iR < Nr - 1; iR++) {
-//       const DataT radius = getRVertex(iR);
-//       for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
-//         mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
-//         mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
-//         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinusS)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
-//       }
-//     }
-//
-//     // for boundary-r
-//     for (size_t iZ = 0; iZ < Nz; iZ++) {
-//       mElectricFieldEr[side](iZ, 0, iPhi) = -1 * (-static_cast<DataT>(0.5) * mPotential[side](iZ, 2, iPhi) + 2 * mPotential[side](iZ, 1, iPhi) - static_cast<DataT>(1.5) * mPotential[side](iZ, 0, iPhi)) * getInvSpacingR();                    // forward difference
-//       mElectricFieldEr[side](iZ, Nr - 1, iPhi) = -1 * (static_cast<DataT>(1.5) * mPotential[side](iZ, Nr - 1, iPhi) - 2 * mPotential[side](iZ, Nr - 2, iPhi) + static_cast<DataT>(0.5) * mPotential[side](iZ, Nr - 3, iPhi)) * getInvSpacingR(); // backward difference
-//     }
-//
-//     for (size_t iR = 0; iR < Nr; iR += Nr - 1) {
-//       const DataT radius = getRVertex(iR);
-//       for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
-//         mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
-//         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinusS)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
-//       }
-//     }
-//
-//     // for boundary-z
-//     for (size_t iR = 0; iR < Nr; ++iR) {
-//       mElectricFieldEz[side](0, iR, iPhi) = -1 * (-static_cast<DataT>(0.5) * mPotential[side](2, iR, iPhi) + 2 * mPotential[side](1, iR, iPhi) - static_cast<DataT>(1.5) * mPotential[side](0, iR, iPhi)) * getInvSpacingZ();
-//       mElectricFieldEz[side](Nz - 1, iR, iPhi) = -1 * (static_cast<DataT>(1.5) * mPotential[side](Nz - 1, iR, iPhi) - 2 * mPotential[side](Nz - 2, iR, iPhi) + static_cast<DataT>(0.5) * mPotential[side](Nz - 3, iR, iPhi)) * getInvSpacingZ();
-//     }
-//
-//     for (size_t iR = 1; iR < Nr - 1; ++iR) {
-//       const DataT radius = getRVertex(iR);
-//       for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
-//         mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
-//         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinusS)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
-//       }
-//     }
-//
-//     // corner points for EPhi
-//     for (size_t iR = 0; iR < Nr; iR += Nr - 1) {
-//       const DataT radius = getRVertex(iR);
-//       for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
-//         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinusS)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
-//       }
-//     }
-//   }
-//   mIsEfieldSet[side] = true;
-// }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side side){
-
-  o2::tpc::TriCubicInterpolator<DataT, Nz, Nr, Nphi> interpolator(mPotential[side], mGrid3D, false, false, true);
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side side)
+{
+  #pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
+    const int symmetry = 0;
+    size_t tmpPlus = iPhi + 1;
+    int signPlus = 1;
+    int tmpMinus = static_cast<int>(iPhi - 1);
+    int signMinus = 1;
+    if (symmetry == 1 || symmetry == -1) { // Reflection symmetry in phi (e.g. symmetry at sector boundaries, or half sectors, etc.)
+      if (tmpPlus > Nphi - 1) {
+        if (symmetry == -1) {
+          signPlus = -1;
+        }
+        tmpPlus = Nphi - 2;
+      }
+      if (tmpMinus < 0) {
+        tmpMinus = 1; // SHOULD IT BE =0?
+        if (symmetry == -1) {
+          signMinus = -1;
+        }
+      }
+    } else { // No Symmetries in phi, no boundaries, the calculations is continuous across all phi
+      if (tmpPlus > Nphi - 1) {
+        tmpPlus = iPhi + 1 - Nphi;
+      }
+      if (tmpMinus < 0) {
+        tmpMinus = static_cast<int>(iPhi - 1 + Nphi);
+      }
+    }
+
+    // for non-boundary V
+    for (size_t iR = 1; iR < Nr - 1; iR++) {
+      const DataT radius = getRVertex(iR);
+      for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
+        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
+        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
+        mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
+      }
+    }
+
+    // for boundary-r
+    for (size_t iZ = 0; iZ < Nz; iZ++) {
+      mElectricFieldEr[side](iZ, 0, iPhi) = -1 * (-static_cast<DataT>(0.5) * mPotential[side](iZ, 2, iPhi) + 2 * mPotential[side](iZ, 1, iPhi) - static_cast<DataT>(1.5) * mPotential[side](iZ, 0, iPhi)) * getInvSpacingR();                    // forward difference
+      mElectricFieldEr[side](iZ, Nr - 1, iPhi) = -1 * (static_cast<DataT>(1.5) * mPotential[side](iZ, Nr - 1, iPhi) - 2 * mPotential[side](iZ, Nr - 2, iPhi) + static_cast<DataT>(0.5) * mPotential[side](iZ, Nr - 3, iPhi)) * getInvSpacingR(); // backward difference
+    }
+
+    for (size_t iR = 0; iR < Nr; iR += Nr - 1) {
+      const DataT radius = getRVertex(iR);
+      for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
+        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
+        mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
+      }
+    }
+
+    // for boundary-z
     for (size_t iR = 0; iR < Nr; ++iR) {
-      for (size_t iZ = 0; iZ < Nz; ++iZ) {
-        const DataT radius = getRVertex(iR);
-        const DataT z = getZVertex(iZ);
-        const DataT phi = getPhiVertex(iPhi);
-        mElectricFieldEz[side](iZ, iR, iPhi) = -interpolator(z,radius,phi,1,0,0);
-        mElectricFieldEr[side](iZ, iR, iPhi) = -interpolator(z,radius,phi,0,1,0);
-        mElectricFieldEphi[side](iZ, iR, iPhi) = -interpolator(z,radius,phi,0,0,1);
+      mElectricFieldEz[side](0, iR, iPhi) = -1 * (-static_cast<DataT>(0.5) * mPotential[side](2, iR, iPhi) + 2 * mPotential[side](1, iR, iPhi) - static_cast<DataT>(1.5) * mPotential[side](0, iR, iPhi)) * getInvSpacingZ();
+      mElectricFieldEz[side](Nz - 1, iR, iPhi) = -1 * (static_cast<DataT>(1.5) * mPotential[side](Nz - 1, iR, iPhi) - 2 * mPotential[side](Nz - 2, iR, iPhi) + static_cast<DataT>(0.5) * mPotential[side](Nz - 3, iR, iPhi)) * getInvSpacingZ();
+    }
+
+    for (size_t iR = 1; iR < Nr - 1; ++iR) {
+      const DataT radius = getRVertex(iR);
+      for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
+        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
+        mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
+      }
+    }
+
+    // corner points for EPhi
+    for (size_t iR = 0; iR < Nr; iR += Nr - 1) {
+      const DataT radius = getRVertex(iR);
+      for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
+        mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
       }
     }
   }
+  mIsEfieldSet[side] = true;
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
@@ -792,6 +775,7 @@ template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 65, 65, 90>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 180>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 17, 17, 90>;
 // template class O2TPCSpaceCharge3DCalc<float, 129, 129, 360>;
 // template class O2TPCSpaceCharge3DCalc<float, 257, 257, 360>;
 

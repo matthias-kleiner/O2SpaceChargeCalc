@@ -28,8 +28,13 @@ using namespace o2::tpc;
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
-  // poissonMultiGrid3D2D(matricesV, matricesCharge, symmetry);
-  poissonMultiGrid3D(matricesV, matricesCharge, symmetry);
+  if (o2::tpc::MGParameters::isFull3D) {
+    std::cout << "poissonMultiGrid3D" << std::endl;
+    poissonMultiGrid3D(matricesV, matricesCharge, symmetry);
+  } else {
+    std::cout << "poissonMultiGrid3D2D" << std::endl;
+    poissonMultiGrid3D2D(matricesV, matricesCharge, symmetry);
+  }
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
@@ -98,8 +103,14 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D2D(DataContainer
     tvCharge[count - 1].resize(tnRRow, tnZColumn, Nphi);
 
     if (count == 1) {
-      std::move(matricesCharge.begin(), matricesCharge.end(), tvChargeFMG[count - 1].data());
-      std::move(matricesV.begin(), matricesV.end(), tvArrayV[count - 1].data());
+      for (int iphi = 0; iphi < Nphi; ++iphi) {
+        for (int ir = 0; ir < Nr; ++ir) {
+          for (int iz = 0; iz < Nz; ++iz) {
+            tvChargeFMG[count - 1](ir, iz, iphi) = matricesCharge(iz, ir, iphi);
+            tvArrayV[count - 1](ir, iz, iphi) = matricesV(iz, ir, iphi);
+          }
+        }
+      }
     } else {
       restrict3D(tvChargeFMG[count - 1], tvChargeFMG[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
       restrictBoundary3D(tvArrayV[count - 1], tvArrayV[count - 2], tnRRow, tnZColumn, Nphi, Nphi);
@@ -164,31 +175,23 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D2D(DataContainer
       }
     }
   } // Case V multi grid (VMG)
-
-  std::move(tvArrayV[0].storage.begin(), tvArrayV[0].storage.end(), matricesV.data());
+  for (int iphi = 0; iphi < Nphi; ++iphi) {
+    for (int ir = 0; ir < Nr; ++ir) {
+      for (int iz = 0; iz < Nz; ++iz) {
+        matricesV(iz, ir, iphi) = tvArrayV[0](ir, iz, iphi);
+      }
+    }
+  }
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry)
 {
-
-  // const Float_t gridSpacingR = (AliTPCPoissonSolver<DataT>::fgkOFCRadius - TPCParameters<DataT>::IFCRADIUS) / (Nr - 1); // h_{r}
-  // const Float_t gridSizeZ = AliTPCPoissonSolver<DataT>::fgkTPCZ0 / (Nz - 1);                // h_{z}
-  // const Float_t ratioZ = gridSpacingR * gridSpacingR / (gridSizeZ * gridSizeZ);                  // ratio_{Z} = gridSize_{r} / gridSize_{z}
-
   const DataT gridSpacingR = getSpacingR();
   const DataT gridSpacingZ = getSpacingZ();
-  const DataT gridSpacingPhi = getSpacingPhi();
-  const DataT ratioPhi = gridSpacingR * gridSpacingR / (gridSpacingPhi * gridSpacingPhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-  const DataT ratioZ = gridSpacingR * gridSpacingR / (gridSpacingZ * gridSpacingZ);       // ratio_{Z} = gridSize_{r} / gridSize_{z}
+  const DataT ratioZ = gridSpacingR * gridSpacingR / (gridSpacingZ * gridSpacingZ); // ratio_{Z} = gridSize_{r} / gridSize_{z}
 
-  Float_t gridSizePhi = TMath::TwoPi() / Nphi; // h_{phi}
-  Float_t h, h2, radius;
-  Float_t tempRatioPhi, tempRatioZ;
-
-  Float_t convergenceError; // Convergence error
-
-  Info("PoissonMultiGrid3D", "%s", Form("in Poisson Solver 3D multi grid full coarsening  Nr=%d, cols=%d, Nphi=%d \n", Nr, Nz, Nphi));
+  Info("PoissonMultiGrid3D", "%s", Form("in Poisson Solver 3D multi grid full coarsening  Nr=%lu, cols=%lu, Nphi=%lu \n", Nr, Nz, Nphi));
 
   // Check that the number of Nr and Nz is suitable for a binary expansion
   if (!isPowerOfTwo((Nr - 1))) {
@@ -210,41 +213,36 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D(DataContainer& 
 
   // Solve Poisson's equation in cylindrical coordinates by multi grid technique
   // Allow for different size grid spacing in R and Z directions
+  int nGridRow = 0; // number grid
+  int nGridCol = 0; // number grid
+  int nGridPhi = 0;
 
-  Int_t nGridRow = 0; // number grid
-  Int_t nGridCol = 0; // number grid
-  Int_t nGridPhi = 0;
-
-  Int_t nnRow;
-  Int_t nnCol;
-  Int_t nnPhi;
-
-  nnRow = Nr;
+  int nnRow = Nr;
   while (nnRow >>= 1) {
-    nGridRow++;
+    ++nGridRow;
   }
 
-  nnCol = Nz;
+  int nnCol = Nz;
   while (nnCol >>= 1) {
-    nGridCol++;
+    ++nGridCol;
   }
 
-  nnPhi = Nphi;
-
+  int nnPhi = Nphi;
   while (nnPhi % 2 == 0) {
-    nGridPhi++;
-    nnPhi /= 2;
+    ++nGridPhi;
+    nnPhi *= 0.5;
   }
 
   Info("PoissonMultiGrid3D", "%s", Form("nGridRow=%d, nGridCol=%d, nGridPhi=%d", nGridRow, nGridCol, nGridPhi));
-  Int_t nLoop = TMath::Max(nGridRow, nGridCol); // Calculate the number of nLoop for the binary expansion
-  nLoop = TMath::Max(nLoop, nGridPhi);
+  const int nLoop = std::max({nGridRow, nGridCol, nGridPhi}); // Calculate the number of nLoop for the binary expansion
 
   // Vector for storing multi grid array
-  Int_t iOne = 1; // index i in gridSize r (original)
-  Int_t jOne = 1; // index j in gridSize z (original)
-  Int_t kOne = 1; // index k in gridSize phi
-  Int_t tnRRow = Nr, tnZColumn = Nz, tPhiSlice = Nphi, otPhiSlice;
+  int iOne = 1; // index i in gridSize r (original)
+  int jOne = 1; // index j in gridSize z (original)
+  int kOne = 1; // index k in gridSize phi
+  int tnRRow = Nr;
+  int tnZColumn = Nz;
+  int tPhiSlice = Nphi;
 
   // 1)	Memory allocation for multi grid
   std::vector<Matrix3D> tvArrayV(nLoop);     // potential <--> error
@@ -259,7 +257,7 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D(DataContainer& 
   std::array<DataT, Nr> coefficient4{};        // coefficient4(Nr) for storing  1/2
   std::array<DataT, Nr> inverseCoefficient4{}; // inverse of coefficient4(Nr)
 
-  for (Int_t count = 1; count <= nLoop; count++) {
+  for (int count = 1; count <= nLoop; ++count) {
     // tnRRow,tnZColumn in new grid
     tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
     tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
@@ -269,47 +267,37 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D(DataContainer& 
     // allocate memory for residue
     tvResidue[count - 1].resize(tnRRow, tnZColumn, tPhiSlice);
     tvPrevArrayV[count - 1].resize(tnRRow, tnZColumn, tPhiSlice);
-
     tvChargeFMG[count - 1].resize(tnRRow, tnZColumn, tPhiSlice);
     tvArrayV[count - 1].resize(tnRRow, tnZColumn, tPhiSlice);
     tvCharge[count - 1].resize(tnRRow, tnZColumn, tPhiSlice);
 
     // memory for the finest grid is from parameters
     if (count == 1) {
-      // tvChargeFMG[count - 1] = matricesCharge;
-      // tvArrayV[count - 1] = matricesV;
-      // tvCharge[count - 1] = matricesCharge;
-      std::move(matricesCharge.begin(), matricesCharge.end(), tvChargeFMG[count - 1].data());
-      std::move(matricesV.begin(), matricesV.end(), tvArrayV[count - 1].data());
+      for (int iphi = 0; iphi < Nphi; ++iphi) {
+        for (int ir = 0; ir < Nr; ++ir) {
+          for (int iz = 0; iz < Nz; ++iz) {
+            tvChargeFMG[count - 1](ir, iz, iphi) = matricesCharge(iz, ir, iphi);
+            tvArrayV[count - 1](ir, iz, iphi) = matricesV(iz, ir, iphi);
+          }
+        }
+      }
       tvCharge[count - 1] = tvChargeFMG[count - 1];
     }
-    // } else {
-      // allocate for coarser grid
-      // tvChargeFMG[count - 1] = new TMatrixD*[tPhiSlice];
-      // tvArrayV[count - 1] = new TMatrixD*[tPhiSlice];
-      // tvCharge[count - 1] = new TMatrixD*[tPhiSlice];
-      // for (Int_t k = 0; k < tPhiSlice; k++) {
-      //   tvArrayV[count - 1][k] = new TMatrixD(tnRRow, tnZColumn);
-      //   tvCharge[count - 1][k] = new TMatrixD(tnRRow, tnZColumn);
-      //   tvChargeFMG[count - 1][k] = new TMatrixD(tnRRow, tnZColumn);
-      // }
-    // }
     iOne = 2 * iOne; // doubling
     jOne = 2 * jOne; // doubling
     kOne = 2 * kOne;
   }
 
   // Case full multi grid (FMG)
-
   if (o2::tpc::MGParameters::cycleType == FCycle) {
     // Restrict the charge to coarser grid
     iOne = 2;
     jOne = 2;
     kOne = 2;
-    otPhiSlice = Nphi;
+    int otPhiSlice = Nphi;
 
     // 1) Restrict Charge and Boundary to coarser grid
-    for (Int_t count = 2; count <= nLoop; count++) {
+    for (int count = 2; count <= nLoop; ++count) {
       // tnRRow,tnZColumn in new grid
       tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
       tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
@@ -330,124 +318,98 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::poissonMultiGrid3D(DataContainer& 
     // Relax on the coarsest grid
     // FMG
     // 2) Relax on the coarsest grid
-
     // move to the coarsest + 1
-    iOne = iOne / 2;
-    jOne = jOne / 2;
-    kOne = kOne / 2;
+    iOne = iOne * 0.5;
+    jOne = jOne * 0.5;
+    kOne = kOne * 0.5;
     tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
     tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
     tPhiSlice = kOne == 1 ? Nphi : Nphi / kOne;
     tPhiSlice = tPhiSlice < nnPhi ? nnPhi : tPhiSlice;
     otPhiSlice = tPhiSlice;
 
-    h = gridSpacingR * iOne;
-    h2 = h * h;
-    gridSizePhi = TMath::TwoPi() / tPhiSlice;           // h_{phi}
-    tempRatioPhi = h * h / (gridSizePhi * gridSizePhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-    tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
-    for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = TPCParameters<DataT>::IFCRADIUS + i * h;
-      coefficient1[i] = 1.0 + h / (2 * radius);
-      coefficient2[i] = 1.0 - h / (2 * radius);
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-    }
+    const DataT h = gridSpacingR * iOne;
+    const DataT h2 = h * h;
+    const DataT gridSizePhiInv = tPhiSlice / (2 * M_PI);             // h_{phi}
+    const DataT tempRatioPhi = h2 * gridSizePhiInv * gridSizePhiInv; // ratio_{phi} = gridSize_{r} / gridSize_{phi}
+    const DataT tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
+
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
+
     // 3) Relax on the coarsest grid
-    // std::cout<<"A"<<std::endl;
     relax3D(tvArrayV[nLoop - 1], tvChargeFMG[nLoop - 1], tnRRow, tnZColumn, tPhiSlice, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
-    // std::cout<<"B"<<std::endl;
 
     // 4) V Cycle from coarsest to finest
-    for (Int_t count = nLoop - 2; count >= 0; count--) {
+    for (int count = nLoop - 2; count >= 0; --count) {
       // move to finer grid
-      // coefficient1.clear();
-      // coefficient2.clear();
-      // coefficient3.clear();
-      // coefficient4.clear();
-      // inverseCoefficient4.clear();
       std::fill(std::begin(coefficient1), std::end(coefficient1), 0);
       std::fill(std::begin(coefficient2), std::end(coefficient2), 0);
       std::fill(std::begin(coefficient3), std::end(coefficient3), 0);
       std::fill(std::begin(coefficient4), std::end(coefficient4), 0);
       std::fill(std::begin(inverseCoefficient4), std::end(inverseCoefficient4), 0);
 
-      iOne = iOne / 2;
-      jOne = jOne / 2;
-      kOne = kOne / 2;
+      iOne = iOne * 0.5;
+      jOne = jOne * 0.5;
+      kOne = kOne * 0.5;
 
       tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
       tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
       tPhiSlice = kOne == 1 ? Nphi : Nphi / kOne;
       tPhiSlice = tPhiSlice < nnPhi ? nnPhi : tPhiSlice;
+
       // 4) a) interpolate from 2h --> h grid
-      // std::cout<<"C"<<std::endl;
       interp3D(tvArrayV[count], tvArrayV[count + 1], tnRRow, tnZColumn, tPhiSlice, otPhiSlice);
-      // std::cout<<"D"<<std::endl;
 
       // Copy the relax charge to the tvCharge
       if (count > 0) {
-        // for (Int_t m = 0; m < tPhiSlice; m++) {
-          // *tvCharge[count][m] = *tvChargeFMG[count][m]; //copy
-        // }
         tvCharge[count] = tvChargeFMG[count];
       }
-      for (Int_t mgCycle = 0; mgCycle < o2::tpc::MGParameters::nMGCycle; mgCycle++) {
+      for (int mgCycle = 0; mgCycle < o2::tpc::MGParameters::nMGCycle; mgCycle++) {
         // copy to store previous potential
-        // for (Int_t m = 0; m < tPhiSlice; m++) {
-          // *tvPrevArrayV[count][m] = *tvArrayV[count][m]; //copy
-        // }
         tvPrevArrayV[count] = tvArrayV[count];
-        // std::cout<<"E"<<std::endl;
+
         vCycle3D(symmetry, count + 1, nLoop, o2::tpc::MGParameters::nPre, o2::tpc::MGParameters::nPost, ratioZ, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
 
-        /// converge error
-        // std::cout<<"F"<<std::endl;
-        convergenceError = getConvergenceError(tvArrayV[count], tvPrevArrayV[count]);
-        // std::cout<<"G"<<std::endl;
-        //// error counting /////
-        if (count == 0) {
-          // (*fErrorConvergenceNormInf)(mgCycle) = convergenceError;
-          // (*fError)(mgCycle) = GetExactError(matricesV, tvPrevArrayV[count], Nphi);
-        }
-        /// if already converge just break move to finer grid
+        // converge error
+        const DataT convergenceError = getConvergenceError(tvArrayV[count], tvPrevArrayV[count]);
+
+        // if already converge just break move to finer grid
         if (convergenceError <= sConvergenceError) {
-          // fIterations = mgCycle + 1;
           break;
         }
       }
       // keep old slice information
       otPhiSlice = tPhiSlice;
     }
-
   } else if (o2::tpc::MGParameters::cycleType == VCycle) {
     // V-cycle
-    Int_t gridFrom = 1;
-    Int_t gridTo = nLoop;
+    int gridFrom = 1;
+    int gridTo = nLoop;
 
-    for (Int_t mgCycle = 0; mgCycle < o2::tpc::MGParameters::nMGCycle; mgCycle++) {
+    for (int mgCycle = 0; mgCycle < o2::tpc::MGParameters::nMGCycle; ++mgCycle) {
       // copy to store previous potential
-      // for (Int_t m = 0; m < Nphi; m++) {
-        // *tvPrevArrayV[0][m] = *tvArrayV[0][m]; //copy
-      // }
       tvPrevArrayV[0] = tvArrayV[0];
+
       // Do V Cycle from the coarsest to finest grid
       vCycle3D(symmetry, gridFrom, gridTo, o2::tpc::MGParameters::nPre, o2::tpc::MGParameters::nPost, ratioZ, tvArrayV, tvCharge, tvResidue, coefficient1, coefficient2, coefficient3, coefficient4, inverseCoefficient4);
+
       // convergence error
-      convergenceError = getConvergenceError(tvArrayV[0], tvPrevArrayV[0]);
-      // (*fErrorConvergenceNormInf)(mgCycle) = convergenceError;
-      // (*fError)(mgCycle) = GetExactError(matricesV, tvPrevArrayV[0], Nphi);
+      const DataT convergenceError = getConvergenceError(tvArrayV[0], tvPrevArrayV[0]);
+
       // if error already achieved then stop mg iteration
       if (convergenceError <= sConvergenceError) {
-        //Info("PoissonMultiGrid3D",Form("Exact Err: %f, MG Iteration : %d", (*fError)(mgCycle), mgCycle));
-        // fIterations = mgCycle + 1;
         break;
       }
     }
   }
-  std::move(tvArrayV[0].storage.begin(), tvArrayV[0].storage.end(), matricesV.data());
+  for (int iphi = 0; iphi < Nphi; ++iphi) {
+    for (int ir = 0; ir < Nr; ++ir) {
+      for (int iz = 0; iz < Nz; ++iz) {
+        matricesV(iz, ir, iphi) = tvArrayV[0](ir, iz, iphi);
+      }
+    }
+  }
 }
-
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::vCycle3D2D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, const DataT ratioPhi,
@@ -532,70 +494,48 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::vCycle3D2D(const int symmetry, con
   }
 }
 
-
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::vCycle3D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, std::vector<Matrix3D>& tvArrayV,
-                std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
-                std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const
+                                                       std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
+                                                       std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const
 {
-
-  Float_t h, h2, ih2, tempRatioZ, tempRatioPhi, radius, tempGridSizePhi;
-  Int_t iOne, jOne, kOne, tnRRow, tnZColumn, tPhiSlice, otPhiSlice, count, nnPhi;
   const DataT gridSpacingR = getSpacingR();
 
-  iOne = 1 << (gridFrom - 1);
-  jOne = 1 << (gridFrom - 1);
-  kOne = 1 << (gridFrom - 1);
+  int iOne = 1 << (gridFrom - 1);
+  int jOne = 1 << (gridFrom - 1);
+  int kOne = 1 << (gridFrom - 1);
 
-  nnPhi = Nphi;
-
+  int nnPhi = Nphi;
   while (nnPhi % 2 == 0) {
-    nnPhi /= 2;
+    nnPhi *= 0.5;
   }
 
-  tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
-  tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
-  tPhiSlice = kOne == 1 ? Nphi : Nphi / kOne;
+  int tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
+  int tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
+  int tPhiSlice = kOne == 1 ? Nphi : Nphi / kOne;
   tPhiSlice = tPhiSlice < nnPhi ? nnPhi : tPhiSlice;
 
-  //Info("VCycle3D",Form("Grid information: tnRRow=%d, tcols=%d, tPhiSlice=%d\n", tnRRow,tnZColumn,tPhiSlice));
+  for (int count = gridFrom; count <= gridTo - 1; ++count) {
+    const int otPhiSlice = tPhiSlice;
+    const DataT h = gridSpacingR * iOne;
+    const DataT h2 = h * h;
+    const DataT ih2 = 1.0 / h2;
+    const DataT tempGridSizePhiInv = tPhiSlice / (2 * M_PI);                 // phi now is multiGrid
+    const DataT tempRatioPhi = h2 * tempGridSizePhiInv * tempGridSizePhiInv; // ratio_{phi} = gridSize_{r} / gridSize_{phi}
+    const DataT tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
-  for (count = gridFrom; count <= gridTo - 1; ++count) {
-    otPhiSlice = tPhiSlice;
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
 
-    h = gridSpacingR * iOne;
-    h2 = h * h;
-    ih2 = 1.0 / h2;
-    tempGridSizePhi = TMath::TwoPi() / tPhiSlice; // phi now is multiGrid
-
-    tempRatioPhi = h * h / (tempGridSizePhi * tempGridSizePhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-
-    tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
-
-    for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = TPCParameters<DataT>::IFCRADIUS + i * h;
-      // const DataT radiusInv = 1. / (TPCParameters<DataT>::IFCRADIUS + i * h);
-      coefficient1[i] = 1.0 + h / (2 * radius);
-      coefficient2[i] = 1.0 - h / (2 * radius);
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
+    for (int i = 1; i < tnRRow - 1; ++i) {
       inverseCoefficient4[i] = 1.0 / coefficient4[i];
     }
 
-    // matricesCurrentV = tvArrayV[count - 1];
-    // matricesCurrentCharge = tvCharge[count - 1];
-    // residue = tvResidue[count - 1];
-
-    //Info("VCycle3D","Before Pre-smoothing");
-    //matricesCurrentV->Print();
-
     // 1) Pre-Smoothing: Gauss-Seidel Relaxation or Jacobi
-    for (Int_t jPre = 1; jPre <= nPre; jPre++) {
+    for (int jPre = 1; jPre <= nPre; ++jPre) {
       relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, tPhiSlice, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
     } // end pre smoothing
 
     // 2) Residue calculation
-// std::cout<<"1:"<<std::endl;
     residue3D(tvResidue[count - 1], tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, tPhiSlice, symmetry, ih2, tempRatioZ, coefficient1, coefficient2, coefficient3, inverseCoefficient4);
 
     iOne = 2 * iOne;
@@ -606,91 +546,53 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::vCycle3D(const int symmetry, const
     tPhiSlice = Nphi / kOne;
     tPhiSlice = tPhiSlice < nnPhi ? nnPhi : tPhiSlice;
 
-    // matricesCurrentCharge = tvCharge[count];
-    // matricesCurrentV = tvArrayV[count];
     //3) Restriction
     restrict3D(tvCharge[count], tvResidue[count - 1], tnRRow, tnZColumn, tPhiSlice, otPhiSlice);
-    // std::cout<<"2:"<<std::endl;
 
     //4) Zeroing coarser V
-    // for (Int_t m = 0; m < tPhiSlice; m++) {
-      // matricesCurrentV[m]->Zero();
-    // }
-    // std::cout<<"tvArAA: "<< tvArrayV[count].nR << std::endl;
-    // std::cout<<"count: "<< count << std::endl;
     std::fill(tvArrayV[count].storage.begin(), tvArrayV[count].storage.end(), 0);
-    // std::cout<<"coun2t: "<< count << std::endl;
   }
-
-  // std::cout<<"count END: "<< count << std::endl;
-  // std::cout<<"gridTo - 1: "<< gridTo - 1 << std::endl;
-  count = gridTo - 1;
 
   // coarsest grid
-  h = gridSpacingR * iOne;
-  h2 = h * h;
-  tempGridSizePhi = TMath::TwoPi() / tPhiSlice; // phi now is multiGrid
+  const DataT h = gridSpacingR * iOne;
+  const DataT h2 = h * h;
+  const DataT tempGridSizePhiInv = tPhiSlice / (2 * M_PI);                 // phi now is multiGrid
+  const DataT tempRatioPhi = h2 * tempGridSizePhiInv * tempGridSizePhiInv; // ratio_{phi} = gridSize_{r} / gridSize_{phi}
+  const DataT tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
-  tempRatioPhi = h * h / (tempGridSizePhi * tempGridSizePhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-  tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
+  calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
 
-  for (Int_t i = 1; i < tnRRow - 1; i++) {
-    radius = TPCParameters<DataT>::IFCRADIUS + i * h;
-    coefficient1[i] = 1.0 + h / (2 * radius);
-    coefficient2[i] = 1.0 - h / (2 * radius);
-    coefficient3[i] = tempRatioPhi / (radius * radius);
-    coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-  }
-  // std::cout<<"3:"<<std::endl;
-  // std::cout<<"tvArrayV[count]: "<< tvArrayV[count].nR << std::endl;
-  // std::cout<<"count: "<< count << std::endl;
   // 3) Relax on the coarsest grid
-  relax3D(tvArrayV[count], tvCharge[count], tnRRow, tnZColumn, tPhiSlice, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
-  // std::cout<<"3a:"<<std::endl;
+  relax3D(tvArrayV[gridTo - 1], tvCharge[gridTo - 1], tnRRow, tnZColumn, tPhiSlice, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
   // back to fine
-  for (count = gridTo - 1; count >= gridFrom; count--) {
-    otPhiSlice = tPhiSlice;
-
-    iOne = iOne / 2;
-    jOne = jOne / 2;
-    kOne = kOne / 2;
+  for (int count = gridTo - 1; count >= gridFrom; --count) {
+    const int otPhiSlice = tPhiSlice;
+    iOne = iOne * 0.5;
+    jOne = jOne * 0.5;
+    kOne = kOne * 0.5;
 
     tnRRow = iOne == 1 ? Nr : Nr / iOne + 1;
     tnZColumn = jOne == 1 ? Nz : Nz / jOne + 1;
     tPhiSlice = kOne == 1 ? Nphi : Nphi / kOne;
     tPhiSlice = tPhiSlice < nnPhi ? nnPhi : tPhiSlice;
 
-    h = gridSpacingR * iOne;
-    h2 = h * h;
-    tempGridSizePhi = TMath::TwoPi() / tPhiSlice; // phi now is multiGrid
-
-    tempRatioPhi = h * h / (tempGridSizePhi * tempGridSizePhi); // ratio_{phi} = gridSize_{r} / gridSize_{phi}
-
-    tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
-  // std::cout<<"4:"<<std::endl;
-    // matricesCurrentCharge = tvCharge[count - 1];
-    // matricesCurrentV = tvArrayV[count - 1];
-    // matricesCurrentVC = tvArrayV[count];
+    const DataT h = gridSpacingR * iOne;
+    const DataT h2 = h * h;
+    const DataT tempGridSizePhiInv = tPhiSlice / (2 * M_PI);
+    const DataT tempRatioPhi = h2 * tempGridSizePhiInv * tempGridSizePhiInv; // ratio_{phi} = gridSize_{r} / gridSize_{phi}
+    const DataT tempRatioZ = ratioZ * iOne * iOne / (jOne * jOne);
 
     // 4) Interpolation/Prolongation
-
     addInterp3D(tvArrayV[count - 1], tvArrayV[count], tnRRow, tnZColumn, tPhiSlice, otPhiSlice);
 
-    for (Int_t i = 1; i < tnRRow - 1; i++) {
-      radius = TPCParameters<DataT>::IFCRADIUS + i * h;
-      coefficient1[i] = 1.0 + h / (2 * radius);
-      coefficient2[i] = 1.0 - h / (2 * radius);
-      coefficient3[i] = tempRatioPhi / (radius * radius);
-      coefficient4[i] = 0.5 / (1.0 + tempRatioZ + coefficient3[i]);
-    }
-  // std::cout<<"5:"<<std::endl;
+    calcCoefficients(1, tnRRow - 1, h, tempRatioZ, tempRatioPhi, coefficient1, coefficient2, coefficient3, coefficient4);
+
     // 5) Post-Smoothing: Gauss-Seidel Relaxation
-    for (Int_t jPost = 1; jPost <= nPost; jPost++) {
+    for (int jPost = 1; jPost <= nPost; ++jPost) {
       relax3D(tvArrayV[count - 1], tvCharge[count - 1], tnRRow, tnZColumn, tPhiSlice, symmetry, h2, tempRatioZ, coefficient1, coefficient2, coefficient3, coefficient4);
     }
   }
 }
-
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int iPhi, const int symmetry,
@@ -734,8 +636,7 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::residue3D(Matrix3D& residue, const
     for (int j = 1; j < tnZColumn - 1; ++j) {
       for (int i = 1; i < tnRRow - 1; ++i) {
         residue(i, j, m) = ih2 * (coefficient2[i] * matricesCurrentV(i - 1, j, m) + tempRatioZ * (matricesCurrentV(i, j - 1, m) + matricesCurrentV(i, j + 1, m)) + coefficient1[i] * matricesCurrentV(i + 1, j, m) +
-                                  coefficient3[i] * (signPlus * matricesCurrentV(i, j, mp1) + signMinus * matricesCurrentV(i, j, mm1)) - inverseCoefficient4[i] * matricesCurrentV(i, j, m)) +
-                           matricesCurrentCharge(i, j, m);
+                                  coefficient3[i] * (signPlus * matricesCurrentV(i, j, mp1) + signMinus * matricesCurrentV(i, j, mm1)) - inverseCoefficient4[i] * matricesCurrentV(i, j, m)) + matricesCurrentCharge(i, j, m);
       } // end cols
     }   // end Nr
   }
@@ -960,12 +861,10 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::relax3D(Matrix3D& matricesCurrentV
   // Gauss-Seidel (Read Black}
   if (o2::tpc::MGParameters::relaxType == GaussSeidel) {
     // for each slice
-    // std::cout<<"X"<<std::endl;
     for (int iPass = 1; iPass <= 2; ++iPass) {
       const int msw = (iPass % 2) ? 1 : 2;
       for (int m = 0; m < iPhi; ++m) {
         const int jsw = ((msw + m) % 2) ? 1 : 2;
-
         int mp1 = m + 1;
         int signPlus = 1;
         int mm1 = m - 1;
@@ -997,22 +896,10 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::relax3D(Matrix3D& matricesCurrentV
             mm1 = m - 1 + iPhi;
           }
         }
-        // std::cout<<"Y"<<std::endl;
         int isw = jsw;
         for (int j = 1; j < tnZColumn - 1; j++, isw = 3 - isw) {
           for (int i = isw; i < tnRRow - 1; i += 2) {
-            // std::cout<<"i: "<< i << std::endl;
-            // std::cout<<"j: "<< j << std::endl;
-            // std::cout<<"m: "<< m << std::endl;
-            // std::cout<<"mm1: "<< mm1 << std::endl;
-            // std::cout<<"mp1: "<< mp1 << std::endl;
-            // (matricesCurrentV)(i, j, m) = 11;
-            // std::cout<<"matricesCurrentV.nR"<< matricesCurrentV.nR << std::endl;
-            // std::cout<<"matricesCurrentV.nR"<< matricesCurrentV.nZ << std::endl;
-            // std::cout<<"matricesCurrentV.nR"<< matricesCurrentV.nPhi << std::endl;
-
             (matricesCurrentV)(i, j, m) = (coefficient2[i] * (matricesCurrentV)(i - 1, j, m) + tempRatioZ * ((matricesCurrentV)(i, j - 1, m) + (matricesCurrentV)(i, j + 1, m)) + coefficient1[i] * (matricesCurrentV)(i + 1, j, m) + coefficient3[i] * (signPlus * (matricesCurrentV)(i, j, mp1) + signMinus * (matricesCurrentV)(i, j, mm1)) + (h2 * (matricesCurrentCharge)(i, j, m))) * coefficient4[i];
-            // std::cout<<"--------"<< std::endl;
           } // end cols
         }   // end Nr
       }     // end phi
@@ -1112,7 +999,6 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict3D(Matrix3D& matricesCurre
   if (2 * newPhiSlice == oldPhiSlice) {
     int mm = 0;
     for (int m = 0; m < newPhiSlice; m++, mm += 2) {
-
       // assuming no symmetry
       int mp1 = mm + 1;
       int mm1 = mm - 1;
@@ -1124,8 +1010,8 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict3D(Matrix3D& matricesCurre
         mm1 = mm - 1 + (oldPhiSlice);
       }
 
-      for (int i = 1, ii = 2; i < tnRRow - 1; i++, ii += 2) {
-        for (int j = 1, jj = 2; j < tnZColumn - 1; j++, jj += 2) {
+      for (int i = 1, ii = 2; i < tnRRow - 1; ++i, ii += 2) {
+        for (int j = 1, jj = 2; j < tnZColumn - 1; ++j, jj += 2) {
 
           // at the same plane
           const int iip1 = ii + 1;
@@ -1146,20 +1032,20 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict3D(Matrix3D& matricesCurre
       }   // end Nr
 
       // for boundary
-      for (int j = 0, jj = 0; j < tnZColumn; j++, jj += 2) {
+      for (int j = 0, jj = 0; j < tnZColumn; ++j, jj += 2) {
         matricesCurrentCharge(0, j, m) = residue(0, jj, mm);
         matricesCurrentCharge(tnRRow - 1, j, m) = residue((tnRRow - 1) * 2, jj, mm);
       }
 
       // for boundary
-      for (int i = 0, ii = 0; i < tnRRow; i++, ii += 2) {
+      for (int i = 0, ii = 0; i < tnRRow; ++i, ii += 2) {
         matricesCurrentCharge(i, 0, m) = residue(ii, 0, mm);
         matricesCurrentCharge(i, tnZColumn - 1, m) = residue(ii, (tnZColumn - 1) * 2, mm);
       }
     } // end phis
 
   } else {
-    for (int m = 0; m < newPhiSlice; m++) {
+    for (int m = 0; m < newPhiSlice; ++m) {
       restrict2D(matricesCurrentCharge, residue, tnRRow, tnZColumn, m);
     }
   }
@@ -1168,8 +1054,8 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict3D(Matrix3D& matricesCurre
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::restrict2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const
 {
-  for (int i = 1, ii = 2; i < tnRRow - 1; i++, ii += 2) {
-    for (int j = 1, jj = 2; j < tnZColumn - 1; j++, jj += 2) {
+  for (int i = 1, ii = 2; i < tnRRow - 1; ++i, ii += 2) {
+    for (int j = 1, jj = 2; j < tnZColumn - 1; ++j, jj += 2) {
       const int iip1 = ii + 1;
       const int iim1 = ii - 1;
       const int jjp1 = jj + 1;

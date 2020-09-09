@@ -18,13 +18,12 @@ struct Matrix3D {
 
   Matrix3D(){};
 
-  // iR and iZ must be swapped since in the original version TMatrixD where used! TMatrixD(row,column)
-  DataT& operator()(const unsigned int iZ, const unsigned int iR, const unsigned int iPhi)
+  DataT& operator()(const unsigned int iR, const unsigned int iZ, const unsigned int iPhi)
   {
     return storage[iR + nR * (iZ + nZ * iPhi)];
   }
 
-  const DataT& operator()(const unsigned int iZ, const unsigned int iR, const unsigned int iPhi) const
+  const DataT& operator()(const unsigned int iR, const unsigned int iZ, const unsigned int iPhi) const
   {
     return storage[iR + nR * (iZ + nZ * iPhi)];
   }

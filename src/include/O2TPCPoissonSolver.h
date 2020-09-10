@@ -75,6 +75,8 @@ class O2TPCPoissonSolver
  private:
   const RegularGrid& mGrid3D{}; ///< grid properties. member is set in O2TPCSpaceCharge3DCalc
 
+  static constexpr DataT INVTWOPI = 1. / (2 * M_PI); ///< inverse of 2*pi
+
   /// Relative error calculation: comparison with exact solution
   ///
   /// \param matricesCurrentV current potential (numerical solution)
@@ -108,6 +110,31 @@ class O2TPCPoissonSolver
   ///    = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
   void poissonMultiGrid3D2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
 
+  /// 3D - Solve Poisson's Equation in 3D in all direction by MultiGrid
+  ///
+  ///    NOTE: In order for this algorithm to work, the number of nRRow and nZColumn must be a power of 2 plus one.
+  ///    The number of nRRow and Z Column can be different.
+  ///
+  ///    R Row       ==  2**M + 1
+  ///    Z Column   ==  2**N + 1
+  ///    Phi Slices  ==  Arbitrary but greater than 3
+  ///
+  ///		 Solving: \f$  \nabla^{2}V(r,\phi,z) = - f(r,\phi,z) \f$
+  ///
+  ///  Algorithm for MultiGrid Full Cycle (FMG)
+  /// - Relax on the coarsest grid
+  /// - Do from coarsest to finest
+  ///     - Interpolate potential from coarse -> fine
+  ///   - Do V-Cycle to the current coarse level to the coarsest
+  ///   - Stop if converged
+  ///
+  ///    DeltaPhi in Radians
+  /// \param matricesV potential in 3D matrix
+  /// \param matricesCharge charge density in 3D matrix (side effect)
+  /// \param symmetry symmetry or not
+  //
+  ///    SYMMETRY = 0 if no phi symmetries, and no phi boundary condition
+  /// = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
   void poissonMultiGrid3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
 
   /// Restrict2D
@@ -235,10 +262,10 @@ class O2TPCPoissonSolver
   /// Interpolation in all direction r-phi-z
   /// \param matricesCurrentV fine grid h
   /// \param matricesCurrentVC coarse grid 2h
-  /// \param tnRRow number of grid in Nr (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
-  /// \param tnZColumn number of grid in Nz (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1a
-  /// \param iphi phi bin
-  void addInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int iphi) const;
+  /// \param tnRRow number of vertices in Nr (in r-direction) for coarser grid should be 2^N + 1, finer grid in 2^{N+1} + 1
+  /// \param tnZColumn number of vertices in Nz (in z-direction) for coarser grid should be  2^M + 1, finer grid in 2^{M+1} + 1a
+  /// \param tnPhi phi vertices
+  void addInterp2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentVC, const int tnRRow, const int tnZColumn, const int tnPhi) const;
 
   /// VCycle 3D2D, V Cycle 3D in multiGrid with constant Nphi
   /// fine-->coarsest-->fine, propagating the residue to correct initial guess of V
@@ -271,9 +298,34 @@ class O2TPCPoissonSolver
                   std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
                   std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
 
-  void vCycle3D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, std::vector<Matrix3D>& tvArrayV,
-                  std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
-                  std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
+  /// VCycle 3D, V Cycle in multiGrid, fine-->coarsest-->fine, propagating the residue to correct initial guess of V
+  ///
+  ///    NOTE: In order for this algorithm to work, the number of nRRow and nZColumn must be a power of 2 plus one.
+  ///    The number of nRRow and Z Column can be different.
+  ///
+  ///    R Row       ==  2**M + 1
+  ///    Z Column    ==  2**N + 1
+  ///    Phi Slice  ==  Arbitrary but greater than 3
+  ///
+  ///    DeltaPhi in Radians
+  ///
+  /// \param symmetry symmetry or not
+  /// \param gridFrom finest level of grid
+  /// \param gridTo coarsest level of grid
+  /// \param nPre number of smoothing before coarsening
+  /// \param nPost number of smoothing after coarsening
+  /// \param ratioZ ratio between square of grid r and grid z (OPTION,  recalculate)
+  /// \param tvArrayV vector of V potential in different grids
+  /// \param tvCharge vector of charge distribution in different grids
+  /// \param tvResidue vector of residue calculation in different grids
+  /// \param coefficient1 coefficient for relaxation (r direction)
+  /// \param coefficient2 coefficient for relaxation (r direction)
+  /// \param coefficient3 coefficient for relaxation (ratio r/z)
+  /// \param coefficient4 coefficient for relaxation (ratio for grid_r)
+  /// \param inverseCoefficient4 coefficient for relaxation (inverse coefficient4)
+  void vCycle3D(const int symmetry, const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT ratioZ, std::vector<Matrix3D>& tvArrayV, std::vector<Matrix3D>& tvCharge,
+                std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
+                std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
 
   /// Residue3D
   ///
@@ -286,7 +338,9 @@ class O2TPCPoissonSolver
   /// \param residue residue in 3D (matrices of matrix)
   /// \param matricesCurrentV potential in 3D (matrices of matrix)
   /// \param matricesCurrentCharge charge in 3D
-  /// \param Nphi number of Nphi in phi direction of TPC
+  /// \param tnRRow number of vertices in the r direction of TPC
+  /// \param tnZColumn number of vertices in z direction of TPC
+  /// \param tnPhi number of vertices in phi direction of TPC
   /// \param symmetry is the cylinder has symmetry
   /// \param ih2 \f$ 1/ h_{r}^{2} \f$
   /// \param tempRatioZ ration between grid size in z-direction and r-direction
@@ -294,18 +348,17 @@ class O2TPCPoissonSolver
   /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
   /// \param coefficient3 coefficient for z
   /// \param inverseCoefficient4 inverse coefficient for f(r,\phi,z)
-  void residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int iPhi, const int symmetry, const DataT ih2, const DataT tempRatioZ,
+  void residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int tnPhi, const int symmetry, const DataT ih2, const DataT tempRatioZ,
                  const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& inverseCoefficient4) const;
 
   ///    Boundary transfer  restrict from fine -> coarse grid
   ///
   /// \param matricesCurrentCharge coarse grid (2h)
   /// \param residue fine grid  (h)
-  /// \param tnRRow number of tnRRow in the r direction of TPC
-  /// \param tnZColumn number of tnZColumn in z direction of TPC
-  /// \param iphi phi bin
-  ///
-  void restrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int iphi) const;
+  /// \param tnRRow number of vertices in the r direction of TPC
+  /// \param tnZColumn number of vertices in z direction of TPC
+  /// \param tnPhi phi vertices
+  void restrictBoundary2D(Matrix3D& matricesCurrentCharge, const Matrix3D& residue, const int tnRRow, const int tnZColumn, const int tnPhi) const;
 
   // calculate coefficients
   void calcCoefficients(unsigned int from, unsigned int to, const DataT h, const DataT tempRatioZ, const DataT tempRatioPhi, std::array<DataT, Nr>& coefficient1,

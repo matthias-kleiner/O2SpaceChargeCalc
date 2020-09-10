@@ -143,6 +143,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::S
 }
 */
 
+// /*
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::Side side, const int maxIteration, const DataT stoppingConvergence)
 {
@@ -152,6 +153,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::S
   const int symmetry = 0;
   poissonSolver.poissonSolver3D(mPotential[side], mDensity[side], symmetry);
 }
+// */
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setEField(const AnalyticalFields<DataT>& formulaStruct)
@@ -255,9 +257,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
-void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter, const DataT convZ, const DataT convR, const DataT convPhi, const DataT approachZ, const DataT approachR, const DataT approachPhi)
+void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter, const DataT approachZ, const DataT approachR, const DataT approachPhi, const DataT diffCorr)
 {
-  /*
   // for nearest neighbour search see: https://doc.cgal.org/latest/Spatial_searching/Spatial_searching_2searching_with_point_with_info_8cpp-example.html
   typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
   typedef Kernel::Point_3 Point_3;
@@ -339,57 +340,50 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIt
         DataT stepPhi = (phi - nearestPhi) * approachPhi;
 
         // needed to check for convergence
-        DataT lastDistanceR = std::numeric_limits<DataT>::max();
-        DataT lastDistanceZ = std::numeric_limits<DataT>::max();
-        DataT lastDistancePhi = std::numeric_limits<DataT>::max();
+        DataT lastCorrdR = std::numeric_limits<DataT>::max();
+        DataT lastCorrdZ = std::numeric_limits<DataT>::max();
+        DataT lastCorrdRPhi = std::numeric_limits<DataT>::max();
 
+        // interpolated global correction
         DataT corrdR = 0;
         DataT corrdRPhi = 0;
         DataT corrdZ = 0;
-        const bool safe = false;
 
         for (int iter = 0; iter < maxIter; ++iter) {
           // 2. get new point coordinates
-          const DataT rPos = regulateR(getRVertex(nearestiR) + stepR);
-          const DataT zPos = regulateZ(getZVertex(nearestiZ) + stepZ);
-          const DataT phiPosUnreg = getPhiVertex(nearestiPhi) + stepPhi;
-          const DataT phiPos = regulatePhi(phiPosUnreg);
+          const DataT rCurrPos = getRVertex(nearestiR) + stepR;
+          const DataT zCurrPos = getZVertex(nearestiZ) + stepZ;
+          const DataT phiCurrPos = getPhiVertex(nearestiPhi) + stepPhi;
 
           // interpolate global correction at new point and calculate position of global correction
-          corrdR = globCorr.evaldR(zPos, rPos, phiPos, safe);
-          const DataT rpos = rPos + corrdR;
+          corrdR = globCorr.evaldR(zCurrPos, rCurrPos, phiCurrPos);
+          const DataT rNewPos = rCurrPos + corrdR;
 
-          const DataT corrPhi = globCorr.evaldRPhi(zPos, rPos, phiPos, safe) / rPos;
-          corrdRPhi = corrPhi * rpos; // normalize to new r coordinate
-          const DataT phipos = phiPosUnreg + corrPhi;
+          const DataT corrPhi = globCorr.evaldRPhi(zCurrPos, rCurrPos, phiCurrPos) / rCurrPos;
+          corrdRPhi = corrPhi * rNewPos; // normalize to new r coordinate
+          const DataT phiNewPos = phiCurrPos + corrPhi;
 
-          corrdZ = globCorr.evaldZ(zPos, rPos, phiPos, safe);
-          const DataT zpos = zPos + corrdZ;
-
-          // calculate distance to new point
-          const DataT distanceR = radius - rpos;
-          const DataT distanceZ = z - zpos;
-          const DataT distancePhi = phi - phipos;
+          corrdZ = globCorr.evaldZ(zCurrPos, rCurrPos, phiCurrPos);
+          const DataT zNewPos = zCurrPos + corrdZ;
 
           // approach desired coordinate
-          stepR += distanceR * approachR;
-          stepZ += distanceZ * approachZ;
-          stepPhi += distancePhi * approachPhi;
+          stepR += (radius - rNewPos) * approachR;
+          stepZ += (z - zNewPos) * approachZ;
+          stepPhi += (phi - phiNewPos) * approachPhi;
 
           // check for convergence
-          const DataT totaldistRDiv = lastDistanceR == 0 ? 0 : std::abs(1 - std::abs(distanceR / lastDistanceR));         // should be larger than 0
-          const DataT totaldistZDiv = lastDistanceZ == 0 ? 0 : std::abs(1 - std::abs(distanceZ / lastDistanceZ));         // should be larger than 0
-          const DataT totaldistPhiDiv = lastDistancePhi == 0 ? 0 : std::abs(1 - std::abs(distancePhi / lastDistancePhi)); // should be larger than 0
+          const DataT diffCorrdR = std::abs(corrdR - lastCorrdR);
+          const DataT diffCorrdRZ = std::abs(corrdZ - lastCorrdZ);
+          const DataT diffCorrdRPhi = std::abs(corrdRPhi - lastCorrdRPhi);
 
           // stop algorithm if converged
-          if (totaldistRDiv <= convR && totaldistZDiv <= convZ && totaldistPhiDiv <= convPhi) {
+          if (diffCorrdR<diffCorr && diffCorrdRZ<diffCorr && diffCorrdRPhi<diffCorr) {
             break;
           }
 
-          // save current distance to desired coordinate for convergency check
-          lastDistanceR = distanceR;
-          lastDistanceZ = distanceZ;
-          lastDistancePhi = distancePhi;
+          lastCorrdR = corrdR;
+          lastCorrdZ = corrdZ;
+          lastCorrdRPhi = corrdRPhi;
         }
         // set global distortions if algorithm converged or iterations exceed max numbers of iterations
         mGlobalDistdR[side](iZ, iR, iPhi) = -corrdR;
@@ -398,7 +392,6 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIt
       }
     }
   }
-  */
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
@@ -775,23 +768,6 @@ template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 65, 65, 90>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 180>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 360>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 257, 257, 360>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 17, 17, 90>;
-// template class O2TPCSpaceCharge3DCalc<float, 129, 129, 360>;
-// template class O2TPCSpaceCharge3DCalc<float, 257, 257, 360>;
-
-// using DataTF = float;
-// using O2TPCSpaceCharge3DCalc17 = O2TPCSpaceCharge3DCalc<DataTF, 17, 17, 90>;
-// using O2TPCSpaceCharge3DCalc129 = O2TPCSpaceCharge3DCalc<DataTF, 129, 129, 180>;
-//
-// template class O2TPCSpaceCharge3DCalc<DataTF, 17, 17, 90>;
-// template class O2TPCSpaceCharge3DCalc<DataTF, 129, 129, 180>;
-//
-// using NumFields17 = NumericalFields<DataTF, 17, 17, 90>;
-// using NumFields129 = NumericalFields<DataTF, 129, 129, 180>;
-// using AnaFields17 = AnalyticalFields<DataTF>;
-// using AnaFields129 = AnalyticalFields<DataTF>;
-//
-// template void O2TPCSpaceCharge3DCalc17::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, NumFields17&) const;
-// template void O2TPCSpaceCharge3DCalc129::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, NumFields129&) const;
-// template void O2TPCSpaceCharge3DCalc17::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, AnaFields17&) const;
-// template void O2TPCSpaceCharge3DCalc129::calcDistortions(DataTF, DataTF, DataTF, DataTF, DataTF&, DataTF&, DataTF&, AnaFields129&) const;

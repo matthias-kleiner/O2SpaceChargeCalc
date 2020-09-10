@@ -35,12 +35,12 @@
 #endif
 
 // for nearest neighbour search. needed for the calculation of the global distortions by iterative method using global corrections
-// #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-// #include <CGAL/Search_traits_3.h>
-// #include <CGAL/Search_traits_adapter.h>
-// #include <CGAL/Orthogonal_k_neighbor_search.h>
-// #include <CGAL/property_map.h>
-// #include <boost/iterator/zip_iterator.hpp>
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Search_traits_3.h>
+#include <CGAL/Search_traits_adapter.h>
+#include <CGAL/Orthogonal_k_neighbor_search.h>
+#include <CGAL/property_map.h>
+#include <boost/iterator/zip_iterator.hpp>
 
 namespace o2
 {
@@ -117,7 +117,8 @@ class O2TPCSpaceCharge3DCalc
   /// \param approachZ when the difference between the desired z coordinate and the position of the global correction is deltaZ, approach the desired z coordinate by deltaZ * \p approachZ.
   /// \param approachR when the difference between the desired r coordinate and the position of the global correction is deltaR, approach the desired r coordinate by deltaR * \p approachR.
   /// \param approachPhi when the difference between the desired phi coordinate and the position of the global correction is deltaPhi, approach the desired phi coordinate by deltaPhi * \p approachPhi.
-  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter = 200, const DataT convZ = 0.05, const DataT convR = 0.05, const DataT convPhi = 0.05, const DataT approachZ = 0.1, const DataT approachR = 0.1, const DataT approachPhi = 0.1);
+  /// \param diffCorr if the absolute differences from the interpolated values for the global corrections from the last iteration compared to the current iteration is smaller than this value, set converged to true for current vertex
+  void calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter = 100, const DataT approachZ = 0.5, const DataT approachR = 0.5, const DataT approachPhi = 0.5, const DataT diffCorr = 1e-6);
 
   /// set the density, potential, electric fields, local distortions/corrections, global distortions/corrections from a file. Missing objects in the file are ignored.
   /// \file file containing the stored values for the density, potential, electric fields, local distortions/corrections, global distortions/corrections
@@ -443,7 +444,7 @@ class O2TPCSpaceCharge3DCalc
 
   /// set phi coordinate between min phi max phi
   DataT regulatePhi(const DataT posPhi) const { return mGrid3D.clampToGridCircular(posPhi, 2); }
-  
+
  private:
   using ASolvAli = AliTPCPoissonSolver<DataT>;
   using ASolv = o2::tpc::O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>;

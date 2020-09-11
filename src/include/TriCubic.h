@@ -170,7 +170,7 @@ class TriCubicInterpolator
   /// \return performs a check if the interpolator can be used with maximum number of threads
   bool checkThreadSafety() const
   {
-    return mNThreads >= omp_get_max_threads();
+    return mNThreads <= omp_get_max_threads();
   }
 
   enum ExtrapolationType {

@@ -17,12 +17,14 @@ endif(ROOT_FOUND)
 
 #set(CMAKE_CXX_FLAGS "-Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wall -Wextra -O3 -march=native -pedantic")
 
-set(CMAKE_CXX_FLAGS "-Wall -O3 -march=native")
-set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3")
+#set(CMAKE_CXX_FLAGS "-Wall -O3 -march=native -ffast-math")
+set(CMAKE_CXX_FLAGS "-Wall -O3 -march=native -ffast-math")
+set(CMAKE_CXX_FLAGS_DEBUG  "-g -O3 -ffast-math")
 
 find_package(OpenMP REQUIRED)
 find_package(Vc REQUIRED)
-find_package(CGAL REQUIRED)
+find_package(fmt REQUIRED)
+#find_package(CGAL REQUIRED)
 
 link_libraries(Vc::Vc)
 link_libraries(ROOT::Core)
@@ -31,6 +33,6 @@ ROOT_GENERATE_DICTIONARY(G__RegularGrid3D src/include/RegularGrid3D.h LINKDEF sr
 add_library(RegularGrid3D SHARED src/include/RegularGrid3D.cxx src/include/RegularGrid3D.h G__RegularGrid3D.cxx)
 target_include_directories(RegularGrid3D PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_executable(executable main.cpp src/include/TriCubic.h src/include/RegularGrid3D.h src/include/Vector.h src/O2TPCSpaceCharge3DCalc.cxx src/include/AliRoot/AliTPCPoissonSolver.cxx)
+add_executable(executable main.cpp src/include/TriCubic.h src/include/RegularGrid3D.h src/include/Vector.h src/O2TPCSpaceCharge3DCalc.cxx src/include/AliRoot/AliTPCPoissonSolver.cxx src/include/O2TPCPoissonSolver.cxx src/utils/TreeStreamRedirector.cxx src/utils/TreeStream.cxx)
 
-target_link_libraries(executable PRIVATE RegularGrid3D OpenMP::OpenMP_CXX Vc::Vc ROOT::Core ROOT::Physics ROOT::ROOTDataFrame)
+target_link_libraries(executable PRIVATE RegularGrid3D OpenMP::OpenMP_CXX Vc::Vc ROOT::Core ROOT::Physics ROOT::ROOTDataFrame fmt::fmt)

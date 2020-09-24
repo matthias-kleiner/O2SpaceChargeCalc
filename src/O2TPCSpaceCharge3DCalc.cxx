@@ -131,7 +131,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::poissonSolver(const o2::tpc::S
     for (size_t iR = 0; iR < Nr; ++iR) {
       for (size_t iZ = 0; iZ < Nz; ++iZ) {
         // std::cout<<"mPotential: "<< mPotential[side](iZ,iR,iPhi) << std::endl;
-        mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
+        // mPotential[side](iZ, iR, iPhi) = static_cast<DataT>((*matricesPotential[iPhi])(iR, iZ));
       }
     }
   }
@@ -174,11 +174,10 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::setEField(const AnalyticalFiel
   mIsEfieldSet[side] = true;
 }
 
-
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side side)
 {
-  #pragma omp parallel for
+#pragma omp parallel for
   for (size_t iPhi = 0; iPhi < Nphi; ++iPhi) {
     const int symmetry = 0;
     size_t tmpPlus = iPhi + 1;
@@ -211,8 +210,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side
     for (size_t iR = 1; iR < Nr - 1; iR++) {
       const DataT radius = getRVertex(iR);
       for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
-        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
-        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
+        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                    // r direction
+        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                    // z direction
         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
       }
     }
@@ -226,7 +225,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side
     for (size_t iR = 0; iR < Nr; iR += Nr - 1) {
       const DataT radius = getRVertex(iR);
       for (size_t iZ = 1; iZ < Nz - 1; iZ++) {
-        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                     // z direction
+        mElectricFieldEz[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ + 1, iR, iPhi) - mPotential[side](iZ - 1, iR, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingZ();                                    // z direction
         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
       }
     }
@@ -240,7 +239,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side
     for (size_t iR = 1; iR < Nr - 1; ++iR) {
       const DataT radius = getRVertex(iR);
       for (size_t iZ = 0; iZ < Nz; iZ += Nz - 1) {
-        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                     // r direction
+        mElectricFieldEr[side](iZ, iR, iPhi) = -1 * (mPotential[side](iZ, iR + 1, iPhi) - mPotential[side](iZ, iR - 1, iPhi)) * static_cast<DataT>(0.5) * getInvSpacingR();                                    // r direction
         mElectricFieldEphi[side](iZ, iR, iPhi) = -1 * (signPlus * mPotential[side](iZ, iR, tmpPlus) - signMinus * mPotential[side](iZ, iR, tmpMinus)) * static_cast<DataT>(0.5) * getInvSpacingPhi() / radius; // phi direction
       }
     }
@@ -259,6 +258,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcEField(const o2::tpc::Side
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
 void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIterative(const DistCorrInterpolator<DataT, Nz, Nr, Nphi>& globCorr, const int maxIter, const DataT approachZ, const DataT approachR, const DataT approachPhi, const DataT diffCorr)
 {
+  // /*
   // for nearest neighbour search see: https://doc.cgal.org/latest/Spatial_searching/Spatial_searching_2searching_with_point_with_info_8cpp-example.html
   typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
   typedef Kernel::Point_3 Point_3;
@@ -306,12 +306,12 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIt
   Tree tree(boost::make_zip_iterator(boost::make_tuple(points.begin(), indices.begin())), boost::make_zip_iterator(boost::make_tuple(points.end(), indices.end())));
 
 #pragma omp parallel for
-  for (unsigned int iZ = 0; iZ < Nz; ++iZ) {
-    const DataT z = getZVertex(iZ);
+  for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
+    const DataT phi = getPhiVertex(iPhi);
     for (unsigned int iR = 0; iR < Nr; ++iR) {
       const DataT radius = getRVertex(iR);
-      for (unsigned int iPhi = 0; iPhi < Nphi; ++iPhi) {
-        const DataT phi = getPhiVertex(iPhi);
+      for (unsigned int iZ = 0; iZ < Nz; ++iZ) {
+        const DataT z = getZVertex(iZ);
 
         // find nearest neighbour
         const Point_3 query(z * getInvSpacingZ(), radius * getInvSpacingR(), phi * getInvSpacingPhi());
@@ -377,7 +377,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIt
           const DataT diffCorrdRPhi = std::abs(corrdRPhi - lastCorrdRPhi);
 
           // stop algorithm if converged
-          if (diffCorrdR<diffCorr && diffCorrdRZ<diffCorr && diffCorrdRPhi<diffCorr) {
+          if (diffCorrdR < diffCorr && diffCorrdRZ < diffCorr && diffCorrdRPhi < diffCorr) {
             break;
           }
 
@@ -392,6 +392,9 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcGlobalDistWithGlobalCorrIt
       }
     }
   }
+  // set flag that global distortions are set to true
+  mIsGlobalDistSet[side] = true;
+  // */
 }
 
 template <typename DataT, size_t Nz, size_t Nr, size_t Nphi>
@@ -765,7 +768,8 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::rebinDensityHisto(const TH3& h
 }
 
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 17, 17, 90>;
-template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 65, 65, 90>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 65, 65, 90>;
+template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 65, 65, 180>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<float, 129, 129, 180>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 180>;
 template class o2::tpc::O2TPCSpaceCharge3DCalc<double, 129, 129, 360>;

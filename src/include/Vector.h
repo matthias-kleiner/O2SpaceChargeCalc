@@ -54,7 +54,6 @@ class Vector
     for (int i = 0; i < size; ++i) {
       mDataVector.scalar(i) = dataArr[i];
       // mDataVector.vector(i) += V(&dataArr[i], Vc::Aligned);
-      // std::cout<<'test'<<std::endl;
     }
   }
 
@@ -75,7 +74,7 @@ class Vector
     mDataVector.vector(j) = vector;
   }
 
-  const Vc::Vector<DataT> getVector(const size_t i) const { return mDataVector.vector(i); }
+  const VDataT getVector(const size_t i) const { return mDataVector.vector(i); }
 
   Vc::Memory<VDataT, N> getMemory() const { return mDataVector; }
 
@@ -119,6 +118,15 @@ inline Vector<T, N> operator*(const Matrix<T, N>& a, const Vector<T, N>& b)
       c_ij += a[i].vector(j) * b.getVector(j);
     }
     c[i] = c_ij.sum();
+  }
+  return c;
+}
+
+template <typename T, size_t N>
+inline Vector<T, N> floor(const Vector<T, N>& a){
+  Vector<T, N> c;
+  for (size_t j = 0; j < a.getvectorsCount(); ++j) {
+    c.setVector(j, Vc::floor(a.getVector(j)));
   }
   return c;
 }
@@ -185,8 +193,7 @@ template <typename DataT, size_t N>
 inline bool operator==(const Vector<DataT, N>& a, const Vector<DataT, N>& b)
 {
   for (size_t j = 0; j < a.getvectorsCount(); ++j) {
-    Vc::Mask<DataT> c = a.getVector(j) != b.getVector(j);
-    if (c.count() > 0) {
+    if (any_of(a.getVector(j) != b.getVector(j))) {
       return false;
     }
   }

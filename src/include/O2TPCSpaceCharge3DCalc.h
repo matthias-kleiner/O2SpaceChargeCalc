@@ -70,6 +70,33 @@ class O2TPCSpaceCharge3DCalc
   /// \param formulaStruct struct containing a method to evaluate the density
   void setChargeDensity(const AnalyticalFields<DataT>& formulaStruct);
 
+  // void setChargeDensityFile(){
+  //   TFile fIn ("/Users/matthias/Desktop/SC_Meeting/AliROOT/code/distortionTree_nR129_nZ129_nPhi180_interpolationOrder2_corrType0_integrationStrategy0.root", "READ");
+  //   TTree* tIn = (TTree*)fIn.Get("distortions");
+  //   int ir = 0;
+  //   int iz = 0;
+  //   int iphi = 0;
+  //   float charge = 0;
+  //   int side = 0;
+  //
+  //   tIn->SetBranchAddress("ir", &ir);
+  //   tIn->SetBranchAddress("iz", &iz);
+  //   tIn->SetBranchAddress("iphi", &iphi);
+  //   tIn->SetBranchAddress("charge", &charge);
+  //   tIn->SetBranchAddress("side", &side);
+  //
+  //   int entries = tIn->GetEntriesFast();
+  //   for(int i=0; i<entries; ++i){
+  //     tIn->GetEntry(i);
+  //     // realistic input
+  //     if(side==0){
+  //       continue;
+  //     }
+  //     mDensity[0](iz,ir,iphi) = charge;
+  //     mDensity[1](iz,ir,iphi) = charge;
+  //   }
+  // }
+
   /// step 0B: this function fills the boundary of the potential using an analytical formula. The boundary is used in the PoissonSolver.
   /// \param formulaStruct struct containing a method to evaluate the potential
   void setPotentialBoundary(const AnalyticalFields<DataT>& formulaStruct);
@@ -342,6 +369,8 @@ class O2TPCSpaceCharge3DCalc
   /// \param strategy numerical integration strategy. see enum IntegrationStrategy for the different types
   void setNumericalIntegrationStrategy(const int strategy) { mNumericalIntegrationStrategy = strategy; }
 
+  void setSimpsonNIteratives(const int nIter) { mSimpsonNIteratives = nIter; }
+
   /// numerical integration strategys
   enum IntegrationStrategy { Trapezoidal = 0,     ///< trapezoidal integration (https://en.wikipedia.org/wiki/Trapezoidal_rule). straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
                              Simpson = 1,         ///< simpon integration. see: https://en.wikipedia.org/wiki/Simpson%27s_rule. straight electron drift line assumed: z0->z1, r0->r0, phi0->phi0
@@ -460,6 +489,7 @@ class O2TPCSpaceCharge3DCalc
   static constexpr DataT GRIDSPACINGPHI = PHIMAX / Nphi;          ///< grid spacing in phi direction
 
   int mNumericalIntegrationStrategy = SimpsonIterative; ///< numerical integration strategy of integration of the E-Field: 0: trapezoidal, 1: Simpson, 2: Root (only for analytical formula case)
+  int mSimpsonNIteratives = 5;
   int mSteps = 1;                                       ///< during the calculation of the corrections/distortions it is assumed that the electron drifts on a line from deltaZ = z0 -> z1. The value sets the deltaZ width: 1: deltaZ=zBin/1, 5: deltaZ=zBin/5
 
   DataT mC0 = 0; ///< coefficient C0 (compare Jim Thomas's notes for definitions)
@@ -763,7 +793,7 @@ void O2TPCSpaceCharge3DCalc<DataT, Nz, Nr, Nphi>::calcDistCorr(const DataT p1r, 
       langevinCylindrical(ddR, ddPhi, ddZ, p1r, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz);
       break;
     case SimpsonIterative:                                                     // iterative simpson integration (should be more precise at least for the analytical E-Field case but takes alot more time than normal simpson integration)
-      for (int i = 0; i < 5; ++i) {                                            // TODO define a convergence criterion to abort the algorithm earlier for speed up.
+      for (int i = 0; i < mSimpsonNIteratives; ++i) {                                            // TODO define a convergence criterion to abort the algorithm earlier for speed up.
         const DataT tmpZ = localDistCorr ? (p2z + ddZ) : regulateZ(p2z + ddZ); // dont regulate for local distortions/corrections! (to get same result as using electric field at last/first bin)
         integrateEFieldsSimpsonIterative(p1r, p1r + ddR, p1phi, p1phi + ddPhi, p1z, tmpZ, localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz, formulaStruct);
         langevinCylindrical(ddR, ddPhi, ddZ, (p1r + 0.5 * ddR), localIntErOverEz, localIntEPhiOverEz, localIntDeltaEz); // using the mean radius '(p1r + 0.5 * ddR)' for calculation of distortions/corections

@@ -1134,7 +1134,9 @@ void O2TPCPoissonSolver<DataT, Nz, Nr, Nphi>::calcCoefficients(unsigned int from
 
 template class o2::tpc::O2TPCPoissonSolver<float, 17, 17, 90>;
 template class o2::tpc::O2TPCPoissonSolver<double, 17, 17, 90>;
-template class o2::tpc::O2TPCPoissonSolver<float, 65, 65, 90>;
+template class o2::tpc::O2TPCPoissonSolver<double, 65, 65, 90>;
+template class o2::tpc::O2TPCPoissonSolver<double, 65, 65, 180>;
 template class o2::tpc::O2TPCPoissonSolver<float, 129, 129, 180>;
 template class o2::tpc::O2TPCPoissonSolver<double, 129, 129, 180>;
 template class o2::tpc::O2TPCPoissonSolver<double, 129, 129, 360>;
+template class o2::tpc::O2TPCPoissonSolver<double, 257, 257, 360>;

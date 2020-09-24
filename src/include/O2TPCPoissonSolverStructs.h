@@ -28,6 +28,21 @@ struct Matrix3D {
     return storage[iR + nR * (iZ + nZ * iPhi)];
   }
 
+  DataT& operator[](const unsigned int index)
+  {
+    return storage[index];
+  }
+
+  const DataT& operator[](const unsigned int index) const
+  {
+    return storage[index];
+  }
+
+  int getIndex(const unsigned int iR, const unsigned int iZ, const unsigned int iPhi) const
+  {
+    return iR + nR * (iZ + nZ * iPhi);
+  }
+
   void resize(const unsigned int nRTmp, const unsigned int nZTmp, const unsigned int nPhiTmp)
   {
     nR = nRTmp;

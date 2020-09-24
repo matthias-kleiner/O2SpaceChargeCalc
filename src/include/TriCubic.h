@@ -111,7 +111,7 @@ class TriCubicInterpolator
   /// \param circularX if set to true periodic boundary conditions are used in x direction
   /// \param circularY if set to true periodic boundary conditions are used in y direction
   /// \param circularZ if set to true periodic boundary conditions are used in z direction
-  TriCubicInterpolator(const DataContainer& gridData, const Grid3D& gridProperties, const bool circularX = false, const bool circularY = false, const bool circularZ = false) : mGridData{gridData}, mGridProperties{gridProperties}, mCircular{{static_cast<int>(circularX), static_cast<int>(circularY), static_cast<int>(circularZ)}} {};
+  TriCubicInterpolator(const DataContainer& gridData, const Grid3D& gridProperties) : mGridData{gridData}, mGridProperties{gridProperties} {};
 
   // interpolate value at given coordinate
   /// \param x x coordinate
@@ -256,13 +256,12 @@ class TriCubicInterpolator
 
   const DataContainer& mGridData{}; ///< adress to the data container of the grid
   const Grid3D& mGridProperties{};  ///< adress to the properties of the grid
-  const Vector<int, 3> mCircular{}; ///< information of periodic boundary conditions are used for x,y,z
 
   inline static thread_local const size_t sThreadnum{static_cast<size_t>(omp_get_thread_num())}; ///< save for each thread the thread number to get fast access to the correct array
   const int mNThreads{omp_get_max_threads()};                                                    ///< number of threads the tricubic interpolator can be used with
 
   std::unique_ptr<Vector<DataT, 64>[]> mCoefficients = std::make_unique<Vector<DataT, 64>[]>(mNThreads);              ///< coefficients needed to interpolate a value
-  std::unique_ptr<Vector<unsigned int, FDim>[]> mLastInd = std::make_unique<Vector<unsigned int, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for the last cell are stored)
+  std::unique_ptr<Vector<DataT, FDim>[]> mLastInd = std::make_unique<Vector<DataT, FDim>[]>(mNThreads); ///< stores the index for the cell, where the coefficients are already evaluated (only the coefficients for the last cell are stored)
   std::unique_ptr<bool[]> mInitialized = std::make_unique<bool[]>(mNThreads);                                         ///< sets the flag if the coefficients are evaluated at least once
 
   int mExtrapolationType = ExtrapolationType::Parabola; ///< sets which type of extrapolation for missing points at boundary is used. Linear and Parabola is only supported for perdiodic z axis and non periodic x and y axis
@@ -429,9 +428,9 @@ void TriCubicInterpolator<DataT, Nx, Ny, Nz>::calcCoefficients(const unsigned in
   int deltaZ[3]{};
 
   // set padding type: circular or standard
-  mCircular[0] ? getDataIndexCircularArray(ix, FX, deltaX) : getDataIndexNonCircularArray(ix, FX, deltaX);
-  mCircular[1] ? getDataIndexCircularArray(iy, FY, deltaY) : getDataIndexNonCircularArray(iy, FY, deltaY);
-  mCircular[2] ? getDataIndexCircularArray(iz, FZ, deltaZ) : getDataIndexNonCircularArray(iz, FZ, deltaZ);
+  getDataIndexNonCircularArray(ix, FX, deltaX);
+  getDataIndexNonCircularArray(iy, FY, deltaY);
+  getDataIndexCircularArray(iz, FZ, deltaZ);
 
   const int i0 = 0;
   const int i1 = 1;
@@ -1575,30 +1574,20 @@ DataT TriCubicInterpolator<DataT, Nx, Ny, Nz>::interpolate(const Vector<DataT, 3
 template <typename DataT, size_t Nx, size_t Ny, size_t Nz>
 const Vector<DataT, 3> TriCubicInterpolator<DataT, Nx, Ny, Nz>::processInp(const Vector<DataT, 3>& coordinates) const
 {
-  const Vector<DataT, FDim> epsilon{{1e-5, 1e-5, 1e-5}};                                                                // add epsilon due to rounding errors
-  Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing() + epsilon}; // needed for the grid index
+  Vector<DataT, FDim> posRel{(coordinates - mGridProperties.getGridMin()) * mGridProperties.getInvSpacing() }; // needed for the grid index
 
-  mGridProperties.clampToGridCircularRel(posRel, mCircular);
+  posRel[FZ] = mGridProperties.clampToGridCircularRel(posRel[FZ], FZ);
+
   const Vector<DataT, FDim> posRelN{posRel};
-  mGridProperties.clampToGridRel(posRel, mCircular);
 
-  // set last row to index last row -1 otherwise two points are missing on the right side of the grid
-  const unsigned int ixTmp = static_cast<unsigned int>(posRel[FX]);
-  const unsigned int iyTmp = static_cast<unsigned int>(posRel[FY]);
-  const unsigned int izTmp = static_cast<unsigned int>(posRel[FZ]);
-  const unsigned int ix = (!mCircular[FX] && ixTmp == Nx - 1) ? Nx - 2 : ixTmp;
-  const unsigned int iy = (!mCircular[FY] && iyTmp == Ny - 1) ? Ny - 2 : iyTmp;
-  const unsigned int iz = (!mCircular[FZ] && izTmp == Nz - 1) ? Nz - 2 : izTmp;
+  posRel[FX] = mGridProperties.clampToGridRel(posRel[FX], FX);
+  posRel[FY] = mGridProperties.clampToGridRel(posRel[FY], FY);
 
-  const Vector<unsigned int, FDim> index{{ix, iy, iz}};
+  const Vector<DataT, FDim> index{ floor(posRel) };
   if (!mInitialized[sThreadnum] || !(mLastInd[sThreadnum] == index)) {
     initInterpolator(index[FX], index[FY], index[FZ]);
   }
-
-  const Vector<DataT, FDim> indexTmp{{static_cast<DataT>(ix), static_cast<DataT>(iy), static_cast<DataT>(iz)}};
-  // const Vector<DataT, FDim> relPos{posRel - indexTmp};
-  const Vector<DataT, FDim> relPos{posRelN - indexTmp};
-  return relPos;
+  return posRelN - index;
 }
 
 // for perdiodic boundary condition

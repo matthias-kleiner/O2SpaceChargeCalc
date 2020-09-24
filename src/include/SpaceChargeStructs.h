@@ -9,10 +9,10 @@
 template <typename DataT = float>
 struct AnalyticalFields {
 
-  DataT parA{1e-5};                           ///< parameter [0] of functions
-  DataT parB{0.5};                            ///< parameter [1] of functions
-  DataT parC{1e-4};                           ///< parameter [2] of functions
-  static constexpr unsigned int ID = 0;       ///< needed to distinguish between the differrent structs
+  DataT parA{1e-5};                     ///< parameter [0] of functions
+  DataT parB{0.5};                      ///< parameter [1] of functions
+  DataT parC{1e-4};                     ///< parameter [2] of functions
+  static constexpr unsigned int ID = 0; ///< needed to distinguish between the differrent structs
   o2::tpc::Side side{o2::tpc::Side::A}; ///< side of the TPC. Since the absolute value is taken during the calculations the choice of the side is arbitrary.
 
   AnalyticalFields(const o2::tpc::Side sideTmp = o2::tpc::Side::A) : side{sideTmp} {};
@@ -145,13 +145,10 @@ struct NumericalFields {
   const RegularGrid& gridInf{};    ///< properties of the regular grid
   const o2::tpc::Side side{};      ///< side of the TPC.
 
-  static const bool sCircularZ = false;                                               ///< no circular interpolation in Z direction
-  static const bool sCircularR = false;                                               ///< no circular interpolation in R direction
-  static const bool sCircularPhi = true;                                              ///< circular interpolation in Phi direction
-  TriCubic interpolatorEr{gridEr, gridInf, sCircularZ, sCircularR, sCircularPhi};     ///< TriCubic interpolator of the electric field Er
-  TriCubic interpolatorEz{gridEz, gridInf, sCircularZ, sCircularR, sCircularPhi};     ///< TriCubic interpolator of the electric field Ez
-  TriCubic interpolatorEphi{gridEphi, gridInf, sCircularZ, sCircularR, sCircularPhi}; ///< TriCubic interpolator of the electric field Ephi
-  static constexpr unsigned int ID = 1;                                               ///< needed to distinguish between the different structs
+  TriCubic interpolatorEr{gridEr, gridInf};     ///< TriCubic interpolator of the electric field Er
+  TriCubic interpolatorEz{gridEz, gridInf};     ///< TriCubic interpolator of the electric field Ez
+  TriCubic interpolatorEphi{gridEphi, gridInf}; ///< TriCubic interpolator of the electric field Ephi
+  static constexpr unsigned int ID = 1;         ///< needed to distinguish between the different structs
 };
 
 template <typename DataT = float, size_t Nr = 17, size_t Nz = 17, size_t Nphi = 90>
@@ -200,13 +197,10 @@ struct DistCorrInterpolator {
   const RegularGrid& gridInf{};         ///< properties of the regular grid
   const o2::tpc::Side side{};           ///< side of the TPC.
 
-  static const bool sCircularZ = false;                                                             ///< no circular interpolation in Z direction
-  static const bool sCircularR = false;                                                             ///< no circular interpolation in R direction
-  static const bool sCircularPhi = true;                                                            ///< circular interpolation in Phi direction
-  TriCubic interpolatorDistCorrdR{distCorrdR, gridInf, sCircularZ, sCircularR, sCircularPhi};       ///< TriCubic interpolator of distortion or correction dR
-  TriCubic interpolatorDistCorrdZ{distCorrdZ, gridInf, sCircularZ, sCircularR, sCircularPhi};       ///< TriCubic interpolator of distortion or correction dZ
-  TriCubic interpolatorDistCorrdRPhi{distCorrdRPhi, gridInf, sCircularZ, sCircularR, sCircularPhi}; ///< TriCubic interpolator of distortion or correction dRPhi
-  static constexpr unsigned int ID = 2;                                                             ///< needed to distinguish between the different structs
+  TriCubic interpolatorDistCorrdR{distCorrdR, gridInf};       ///< TriCubic interpolator of distortion or correction dR
+  TriCubic interpolatorDistCorrdZ{distCorrdZ, gridInf};       ///< TriCubic interpolator of distortion or correction dZ
+  TriCubic interpolatorDistCorrdRPhi{distCorrdRPhi, gridInf}; ///< TriCubic interpolator of distortion or correction dRPhi
+  static constexpr unsigned int ID = 2;                       ///< needed to distinguish between the different structs
 };
 
 #endif

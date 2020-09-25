@@ -130,6 +130,7 @@ struct MGParameters {
   inline static int nPost = 2;                     ///< number of iteration for post smoothing
   inline static int nMGCycle = 200;                ///< number of multi grid cycle (V type)
   inline static int maxLoop = 6;                   ///< the number of tree-deep of multi grid
+  inline static int gamma = 1;                     ///< number of iteration at coarsest level !TODO SET TO REASONABLE VALUE!
 };
 
 template <typename DataT = float>

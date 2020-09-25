@@ -13,10 +13,13 @@
 template <typename DataT = float, unsigned int Nx = 4, unsigned int Ny = 4, unsigned int Nz = 4>
 struct DataContainer3D {
 
+  DataContainer3D() = default;
+  
  public:
   class iterator
   {
    public:
+
     iterator(DataT* ptr) : ptr(ptr) {}
     iterator operator++()
     {
@@ -32,8 +35,6 @@ struct DataContainer3D {
 
   iterator begin() const { return iterator(mData.get()); }
   iterator end() const { return iterator(mData.get() + FN); }
-
-  DataContainer3D() = default;
 
   static constexpr size_t FN{Nx * Ny * Nz}; ///< number of values stored in the container
 
@@ -77,6 +78,20 @@ struct DataContainer3D {
     return FN;
   }
 
+  static constexpr size_t getNX()
+  {
+    return Nx;
+  }
+
+  static constexpr size_t getNY()
+  {
+    return Ny;
+  }
+
+  static constexpr size_t getNZ()
+  {
+    return Nz;
+  }
   /// write object to file
   /// \param outf object is written to this file
   /// \param name object is save with this name

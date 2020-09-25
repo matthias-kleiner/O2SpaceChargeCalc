@@ -66,6 +66,14 @@ class O2TPCPoissonSolver
   /// \post Numerical solution for potential distribution is calculated and stored in each rod at **matricesV**
   void poissonSolver3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
 
+  /// Provides poisson solver in 2D
+  ///
+  /// Based on the strategy (relaxation, multi grid or FFT)
+  ///
+  /// \param matricesV potential in matrix
+  /// \param matricesCharge charge density in matrix (side effect
+  void poissonSolver2D(DataContainer& matricesV, const DataContainer& matricesCharge);
+
   inline static DataT sConvergenceError{1e-3}; ///< Error tolerated
 
   DataT getSpacingZ() const { return mGrid3D.getSpacingX(); }
@@ -137,6 +145,15 @@ class O2TPCPoissonSolver
   /// = 1 if we have reflection symmetry at the boundaries (eg. sector symmetry or half sector symmetries).
   void poissonMultiGrid3D(DataContainer& matricesV, const DataContainer& matricesCharge, const int symmetry);
 
+  /// Solve Poisson's Equation by MultiGrid Technique in 2D (assuming cylindrical symmetry)
+  ///
+  /// NOTE: In order for this algorithm to work, the number of nRRow and nZColumn must be a power of 2 plus one.
+  /// So nRRow == 2**M + 1 and nZColumn == 2**N + 1.  The number of nRRow and nZColumn can be different.
+  ///
+  /// \param matricesV potential in matrix
+  /// \param matricesCharge charge density in matrix (side effect
+  void poissonMultiGrid2D(DataContainer& matricesV, const DataContainer& matricesCharge, const int iPhi = 0);
+
   /// Restrict2D
   ///
   ///    Grid transfer operator, restrict from fine -> coarse grid
@@ -204,6 +221,26 @@ class O2TPCPoissonSolver
   /// \param coefficient4 coefficients for f(r,\phi,z)
   void relax3D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int iPhi, const int symmetry, const DataT h2, const DataT tempRatioZ,
                const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& coefficient4) const;
+
+  /// Relax2D
+  ///
+  ///    Relaxation operation for multiGrid
+  ///		 relaxation used 5 stencil in cylindrical coordinate
+  ///
+  /// Using the following equations
+  /// \f$ U_{i,j,k} = (1 + \frac{1}{r_{i}h_{r}}) U_{i+1,j,k}  + (1 - \frac{1}{r_{i}h_{r}}) U_{i+1,j,k}  \f$
+  ///
+  /// \param matricesCurrentV TMatrixD& potential in 3D (matrices of matrix)
+  /// \param matricesCurrentCharge TMatrixD& charge in 3D
+  /// \param tnRRow number of nRRow in the r direction of TPC
+  /// \param tnZColumn number of nZColumn in z direction of TPC
+  /// \param h2 \f$  h_{r}^{2} \f$
+  /// \param tempFourth coefficient for h
+  /// \param tempRatio ratio between grid size in z-direction and r-direction
+  /// \param coefficient1 coefficient for \f$  V_{x+1,y,z} \f$
+  /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
+  void relax2D(Matrix3D& matricesCurrentV, Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT h2, const DataT tempFourth, const DataT tempRatio,
+               std::vector<DataT>& coefficient1, std::vector<DataT>& coefficient2);
 
   /// Interpolation/Prolongation in 2D
   ///
@@ -327,6 +364,43 @@ class O2TPCPoissonSolver
                 std::vector<Matrix3D>& tvResidue, std::array<DataT, Nr>& coefficient1, std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3,
                 std::array<DataT, Nr>& coefficient4, std::array<DataT, Nr>& inverseCoefficient4) const;
 
+  /// V-Cycle 2D
+  ///
+  /// Implementation non-recursive V-cycle for 2D
+  ///
+  ///	Algorithms:
+  ///
+  /// \param gridFrom finest level of grid
+  /// \param gridTo coarsest level of grid
+  /// \param nPre number of smoothing before coarsening
+  /// \param nPost number of smoothing after coarsening
+  /// \param gridSizeR grid size in r direction (OPTION,  recalculate)
+  /// \param ratio ratio between square of grid r and grid z (OPTION,  recalculate)
+  /// \param tvArrayV vector of V potential in different grids
+  /// \param tvCharge vector of charge distribution in different grids
+  /// \param tvResidue vector of residue calculation in different grids
+  void vCycle2D(const int gridFrom, const int gridTo, const int nPre, const int nPost, const DataT gridSizeR, const DataT ratio, std::vector<Matrix3D>& tvArrayV,
+                std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue);
+
+  /// W-Cycle 2D
+  ///
+  /// Implementation non-recursive W-cycle for 2D
+  ///
+  ///	Algorithms:
+  ///
+  /// \param gridFrom finest level of grid
+  /// \param gridTo coarsest level of grid
+  /// \param gamma number of iterations at coarsest level
+  /// \param nPre number of smoothing before coarsening
+  /// \param nPost number of smoothing after coarsening
+  /// \param gridSizeR grid size in r direction (OPTION,  recalculate)
+  /// \param ratio ratio between square of grid r and grid z (OPTION,  recalculate)
+  /// \param tvArrayV vector of V potential in different grids
+  /// \param tvCharge vector of charge distribution in different grids
+  /// \param tvResidue vector of residue calculation in different grids
+  void wCycle2D(const int gridFrom, const int gridTo, const int gamma, const int nPre, const int nPost, const DataT gridSizeR, const DataT ratio,
+                std::vector<Matrix3D>& tvArrayV, std::vector<Matrix3D>& tvCharge, std::vector<Matrix3D>& tvResidue);
+
   /// Residue3D
   ///
   ///    Compute residue from V(.) where V(.) is numerical potential and f(.).
@@ -350,6 +424,27 @@ class O2TPCPoissonSolver
   /// \param inverseCoefficient4 inverse coefficient for f(r,\phi,z)
   void residue3D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const int tnPhi, const int symmetry, const DataT ih2, const DataT tempRatioZ,
                  const std::array<DataT, Nr>& coefficient1, const std::array<DataT, Nr>& coefficient2, const std::array<DataT, Nr>& coefficient3, const std::array<DataT, Nr>& inverseCoefficient4) const;
+
+ /// Residue2D
+ ///
+ ///    Compute residue from V(.) where V(.) is numerical potential and f(.).
+ ///		 residue used 5 stencil in cylindrical coordinate
+ ///
+ /// Using the following equations
+ /// \f$ U_{i,j,k} = (1 + \frac{1}{r_{i}h_{r}}) U_{i+1,j,k}  + (1 - \frac{1}{r_{i}h_{r}}) U_{i+1,j,k}  \f$
+ ///
+ /// \param residue potential in 2D
+ /// \param matricesCurrentV potential in 2D
+ /// \param matricesCurrentCharge charge in 2D
+ /// \param nRRow number of nRRow in the r direction of TPC
+ /// \param nZColumn number of nZColumn in z direction of TPC
+ /// \param ih2 \f$  h_{r}^{2} \f$
+ /// \param iTempFourth coefficient for h
+ /// \param tempRatio ratio between grid size in z-direction and r-direction
+ /// \param coefficient1 coefficient for \f$  V_{x+1,y,z} \f$
+ /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
+  void residue2D(Matrix3D& residue, Matrix3D& matricesCurrentV, Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT ih2, const DataT inverseTempFourth,
+                 const DataT tempRatio, std::vector<DataT>& coefficient1, std::vector<DataT>& coefficient2);
 
   ///    Boundary transfer  restrict from fine -> coarse grid
   ///

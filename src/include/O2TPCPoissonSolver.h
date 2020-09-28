@@ -239,7 +239,7 @@ class O2TPCPoissonSolver
   /// \param tempRatio ratio between grid size in z-direction and r-direction
   /// \param coefficient1 coefficient for \f$  V_{x+1,y,z} \f$
   /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
-  void relax2D(Matrix3D& matricesCurrentV, Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT h2, const DataT tempFourth, const DataT tempRatio,
+  void relax2D(Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT h2, const DataT tempFourth, const DataT tempRatio,
                std::vector<DataT>& coefficient1, std::vector<DataT>& coefficient2);
 
   /// Interpolation/Prolongation in 2D
@@ -443,7 +443,7 @@ class O2TPCPoissonSolver
  /// \param tempRatio ratio between grid size in z-direction and r-direction
  /// \param coefficient1 coefficient for \f$  V_{x+1,y,z} \f$
  /// \param coefficient2 coefficient for \f$  V_{x-1,y,z} \f$
-  void residue2D(Matrix3D& residue, Matrix3D& matricesCurrentV, Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT ih2, const DataT inverseTempFourth,
+  void residue2D(Matrix3D& residue, const Matrix3D& matricesCurrentV, const Matrix3D& matricesCurrentCharge, const int tnRRow, const int tnZColumn, const DataT ih2, const DataT inverseTempFourth,
                  const DataT tempRatio, std::vector<DataT>& coefficient1, std::vector<DataT>& coefficient2);
 
   ///    Boundary transfer  restrict from fine -> coarse grid
@@ -458,6 +458,9 @@ class O2TPCPoissonSolver
   // calculate coefficients
   void calcCoefficients(unsigned int from, unsigned int to, const DataT h, const DataT tempRatioZ, const DataT tempRatioPhi, std::array<DataT, Nr>& coefficient1,
                         std::array<DataT, Nr>& coefficient2, std::array<DataT, Nr>& coefficient3, std::array<DataT, Nr>& coefficient4) const;
+
+  // calculate coefficients for 2D poisson solver
+  void calcCoefficients2D(unsigned int from, unsigned int to, const DataT h, std::vector<DataT>& coefficient1, std::vector<DataT>& coefficient2) const;
 
   /// Helper function to check if the integer is equal to a power of two
   /// \param i the number

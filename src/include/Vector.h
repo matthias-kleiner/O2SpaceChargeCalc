@@ -13,11 +13,15 @@
 ///
 /// \author  Matthias Kleiner <matthias.kleiner@cern.ch>
 
-#ifndef MATR_H
-#define MATR_H
+#ifndef VECTOR_H
+#define VECTOR_H
 
 #include <Vc/Vc>
 
+namespace o2
+{
+namespace tpc
+{
 template <typename DataT = float, size_t N = 64>
 class Matrix
 {
@@ -47,71 +51,33 @@ class Vector
   /// \param dataVector data which is assigned to the vector
   Vector(const Vc::Memory<VDataT, N>& dataVector) : mDataVector(dataVector) {}
 
-  /// constructor
-  /// \param dataArr data array which is assigned to the vector TODO optimize this
-  Vector(const DataT dataArr[], const size_t size)
-  {
-    for (int i = 0; i < size; ++i) {
-      mDataVector.scalar(i) = dataArr[i];
-      // mDataVector.vector(i) += V(&dataArr[i], Vc::Aligned);
-    }
-  }
-
-  /// constructor
-  /// \param val the vector is initialized with this value
-  Vector(const DataT val)
-  {
-    for (size_t i = 0; i < N; ++i) {
-      mDataVector.scalar(i) = val;
-    }
-  }
-
+  /// operator access
   const DataT operator[](size_t i) const { return mDataVector.scalar(i); }
   DataT& operator[](size_t i) { return mDataVector.scalar(i); }
 
-  void setVector(const size_t j, const VDataT& vector)
-  {
-    mDataVector.vector(j) = vector;
-  }
+  /// sets the vector with index j
+  void setVector(const size_t j, const VDataT& vector) { mDataVector.vector(j) = vector; }
 
-  const VDataT getVector(const size_t i) const { return mDataVector.vector(i); }
-
-  Vc::Memory<VDataT, N> getMemory() const { return mDataVector; }
+  /// \return returns the vector with index j
+  const VDataT getVector(const size_t j) const { return mDataVector.vector(j); }
 
   /// \return returns the number of Vc::Vector<DataT> stored in the Vector
-  size_t getvectorsCount() const
-  {
-    return mDataVector.vectorsCount();
-  }
+  size_t getvectorsCount() const { return mDataVector.vectorsCount(); }
 
   /// \return returns the number of entries stored in the Vector
-  size_t getentriesCount() const
-  {
-    return mDataVector.entriesCount();
-  }
-
-  const Vc::Memory<VDataT, N>& getDataStorage() const
-  {
-    return mDataVector;
-  }
-
-  Vc::Memory<VDataT, N>& getDataStorage()
-  {
-    return mDataVector;
-  }
+  size_t getentriesCount() const { return mDataVector.entriesCount(); }
 
  private:
   // storage for the data
   Vc::Memory<VDataT, N> mDataVector{};
 };
 
-template <typename T, size_t N>
-inline Vector<T, N> operator*(const Matrix<T, N>& a, const Vector<T, N>& b)
+template <typename DataT, size_t N>
+inline Vector<DataT, N> operator*(const Matrix<DataT, N>& a, const Vector<DataT, N>& b)
 {
-  using V = Vc::Vector<T>;
-
+  using V = Vc::Vector<DataT>;
   // resulting vector c
-  Vector<T, N> c;
+  Vector<DataT, N> c;
   for (size_t i = 0; i < N; ++i) {
     V c_ij{};
     for (size_t j = 0; j < a[i].vectorsCount(); ++j) {
@@ -122,54 +88,55 @@ inline Vector<T, N> operator*(const Matrix<T, N>& a, const Vector<T, N>& b)
   return c;
 }
 
-template <typename T, size_t N>
-inline Vector<T, N> floor(const Vector<T, N>& a){
-  Vector<T, N> c;
+template <typename DataT, size_t N>
+inline Vector<DataT, N> floor(const Vector<DataT, N>& a)
+{
+  Vector<DataT, N> c;
   for (size_t j = 0; j < a.getvectorsCount(); ++j) {
     c.setVector(j, Vc::floor(a.getVector(j)));
   }
   return c;
 }
 
-template <typename T, size_t N>
-inline Vector<T, N> operator-(const Vector<T, N>& a, const Vector<T, N>& b)
+template <typename DataT, size_t N>
+inline Vector<DataT, N> operator-(const Vector<DataT, N>& a, const Vector<DataT, N>& b)
 {
   // resulting matrix c
-  Vector<T, N> c;
+  Vector<DataT, N> c;
   for (size_t j = 0; j < a.getvectorsCount(); ++j) {
     c.setVector(j, a.getVector(j) - b.getVector(j));
   }
   return c;
 }
 
-template <typename T, size_t N>
-inline Vector<T, N> operator+(const Vector<T, N>& a, const Vector<T, N>& b)
+template <typename DataT, size_t N>
+inline Vector<DataT, N> operator+(const Vector<DataT, N>& a, const Vector<DataT, N>& b)
 {
   // resulting matrix c
-  Vector<T, N> c;
+  Vector<DataT, N> c;
   for (size_t j = 0; j < a.getvectorsCount(); ++j) {
     c.setVector(j, a.getVector(j) + b.getVector(j));
   }
   return c;
 }
 
-template <typename T, size_t N>
-inline Vector<T, N> operator*(const T a, const Vector<T, N>& b)
+template <typename DataT, size_t N>
+inline Vector<DataT, N> operator*(const DataT a, const Vector<DataT, N>& b)
 {
   // resulting matrix c
-  Vector<T, N> c;
+  Vector<DataT, N> c;
   for (size_t j = 0; j < b.getvectorsCount(); ++j) {
     c.setVector(j, a * b.getVector(j));
   }
   return c;
 }
 
+// compute the sum of one Vector
 template <typename DataT, size_t N>
 inline DataT sum(const Vector<DataT, N>& a)
 {
   // resulting matrix c
   Vc::Vector<DataT> b = a.getVector(0);
-
   for (size_t j = 1; j < a.getvectorsCount(); ++j) {
     b += a.getVector(j);
   }
@@ -181,7 +148,7 @@ template <typename DataT, size_t N>
 inline Vector<DataT, N> operator*(const Vector<DataT, N>& a, const Vector<DataT, N>& b)
 {
   // resulting matrix c
-  Vector<DataT, N> c;
+  Vector<DataT, N> c{};
   for (size_t j = 0; j < a.getvectorsCount(); ++j) {
     c.setVector(j, a.getVector(j) * b.getVector(j));
   }
@@ -199,5 +166,8 @@ inline bool operator==(const Vector<DataT, N>& a, const Vector<DataT, N>& b)
   }
   return true;
 }
+
+} // namespace tpc
+} // namespace o2
 
 #endif
